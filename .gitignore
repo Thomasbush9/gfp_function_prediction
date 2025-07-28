@@ -1,0 +1,23 @@
+# Ignore all contents of data/, except test_input.pt
+data/*
+!data/test_input.yaml
+
+# Ignore the entire outputs/ directory
+outputs/
+
+# Ignore downloaded Boltz folder
+boltz2/
+boltz/
+Boltz/
+
+# Python & system artifacts
+__pycache__/
+*.pyc
+.DS_Store
+
+# Optional: log files or model checkpoints
+logs/
+*.log
+*.pt
+*.ckpt
+
