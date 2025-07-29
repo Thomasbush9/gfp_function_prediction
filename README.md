@@ -7,11 +7,9 @@ We are going to compare several metrics and test a custom model to predict GOF o
 ## Project Structure
 
 gfp_function_prediction/
-├── bash_scripts/ # Setup and utility shell scripts
-├── data/ # Auto-created on first run
-├── outputs/ # Predictions and logs
-├── scripts/ # Python preprocessing scripts
-└── boltz/ # Cloned Boltz repo
+    - bash_scripts/ # bash scripts for setup
+    - scripts/ #python script for custom analysis
+    - data/ # test data for boltz
 
 ## Setup Instructions
 
