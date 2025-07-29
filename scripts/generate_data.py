@@ -40,7 +40,7 @@ if __name__ == "__main__":
 
     # 3. Generate YAML files and record index
     index_records = []
-    for idx, row in dataset.iterrows():
+    for idx, row in tqdm(dataset.iterrows(), desc="Generating data"):
         mutated_seq = row["seq_mutated"]
 
         data_seq = {
@@ -56,7 +56,6 @@ if __name__ == "__main__":
         try:
             with open(filepath, "w") as file:
                 yaml.dump(data_seq, file, sort_keys=False)
-            print(f"[✓] Wrote: {filename}")
             index_records.append({"idx": idx, "filename": filename})
         except Exception as e:
             print(f"[✗] Failed to write {filename}: {e}")
