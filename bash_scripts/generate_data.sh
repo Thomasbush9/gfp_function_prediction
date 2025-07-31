@@ -4,7 +4,7 @@
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 MAIN_DIR="$(dirname "$SCRIPT_DIR")"
 DATA_DIR="$MAIN_DIR/data/raw_data"
-SCRIPT_PY="$MAIN_DIR/scripts"
+SCRIPT_PY="$MAIN_DIR/utils"
 
 # Step 2: Create data directory and download files
 mkdir -p "$DATA_DIR"
