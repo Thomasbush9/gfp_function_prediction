@@ -48,6 +48,13 @@ def mutate_sequence(mutation_string, seq, mapping_db_seq):
         return None
     return None
 
+    # Calculate the original distribution of num_mut
+    def get_numb_mut(mut:str)->int:
+        if type(mut) == str:
+            n = len(mut.split(':'))
+        else: 
+            return 0
+        return n
 
 def balanced_sampling(dataset: pd.DataFrame, n: int, output_file="balanced_subset.txt"):
     """
@@ -72,7 +79,8 @@ def balanced_sampling(dataset: pd.DataFrame, n: int, output_file="balanced_subse
     if n >= len(dataset):
         raise ValueError(f"n ({n}) must be less than dataset size ({len(dataset)})")
 
-    # Calculate the original distribution of num_mut
+
+    dataset['num_mut'] = dataset['aaMutations'].apply(lambda mut:get_numb_mut(mut))
     original_dist = dataset["num_mut"].value_counts(normalize=True)
 
     # Calculate how many samples to select from each num_mut category
