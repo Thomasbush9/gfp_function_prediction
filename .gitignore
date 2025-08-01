@@ -10,6 +10,8 @@ boltz2/
 boltz/
 Boltz/
 
+PDAnalysis/
+
 # Python & system artifacts
 __pycache__/
 *.pyc
