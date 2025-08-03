@@ -10,7 +10,7 @@ boltz2/
 boltz/
 Boltz/
 
-PDAnalysis/
+PDAnalysis/*
 
 # Python & system artifacts
 __pycache__/
@@ -23,3 +23,50 @@ logs/
 *.pt
 *.ckpt
 
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Notebook execution outputs (optional, if using tools like nbconvert)
+*.nbconvert.ipynb
+
+# Environment files
+.env
+.venv/
+env/
+venv/
+*.env
+
+# VSCode or other editor configs (optional)
+.vscode/
+.idea/
+
+# Python virtual environment folders
+*.egg-info/
+.eggs/
+*.egg
+dist/
+build/
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# Jupyter-related logs
+*.log
+
+# Local data/cache
+*.sqlite
+*.db
+*.h5
+*.hdf5
+*.npy
+*.npz
+*.pkl
+*.joblib
+.cache/
+__pypackages__/
