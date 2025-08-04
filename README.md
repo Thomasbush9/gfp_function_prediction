@@ -47,5 +47,9 @@ This will:
 2. Download the .tsv with the mutated sequence and the original sequence in FASTA format
 3. Generate YAML files required for boltz using 'generate_data.py' script, files are saved inside date_time directory inside data/
 
+### Generate and Run predictions
 
+```python
+python run_deformation_analysis --Path to predictions --o output path
+```
 
