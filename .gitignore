@@ -11,7 +11,7 @@ boltz/
 Boltz/
 
 PDAnalysis/*
-
+PDAnalysis/
 # Python & system artifacts
 __pycache__/
 *.pyc
