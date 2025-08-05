@@ -16,7 +16,8 @@ echo "⬇️  Downloading dataset from Google Drive..."
 pip show gdown >/dev/null 2>&1 || pip install gdown
 
 # Replace with your actual ZIP file ID (single archive containing both files)
-FILE_ID="1ysB_unEXbgcGwQIHCCH0E2TpPlDa3eAm"
+# FILE_ID="1ysB_unEXbgcGwQIHCCH0E2TpPlDa3eAm"
+FILE_ID="1e9cRYt4ctQ1vPb64UUhR3IubauKqRzen"
 gdown "https://drive.google.com/uc?id=${FILE_ID}" -O raw_data.zip
 
 # Unzip the archive
@@ -26,11 +27,12 @@ echo "✅ Files downloaded to $DATA_DIR"
 # Step 3: Define input files
 DATA_FILE="$DATA_DIR/amino_acid_genotypes_to_brightness.tsv"
 ORIGINAL_FILE="$DATA_DIR/P42212.fasta.txt"
+MSA_FILE="$DATA_DIR/gfp_msa_b5fdc_0.a3m"
 
 # Step 4: Run Python script with arguments
 cd "$SCRIPT_PY" || { echo "❌ Cannot cd into $SCRIPT_PY"; exit 1; }
 echo "🚀 Running generate_data.py..."
-python generate_data.py --data "$DATA_FILE" --original "$ORIGINAL_FILE"
+python generate_data.py --data "$DATA_FILE" --original "$ORIGINAL_FILE" --msa "$MSA_FILE"
 
 echo "✅ All done."
 
