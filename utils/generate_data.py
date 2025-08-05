@@ -46,7 +46,7 @@ if __name__ == "__main__":
         data_seq = {
             "version": 1,
             "sequences": [
-                {"protein": {"id": str(idx), "sequence": mutated_seq, "msa": "empty"}}
+                {"protein": {"id": str(idx), "sequence": mutated_seq, "msa": msa}}
             ],
         }
 
