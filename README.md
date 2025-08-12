@@ -54,7 +54,12 @@ python run_deformation_analysis --Path to predictions --o output path
 ```
 ## TODO:
 
--[ ] Decide what to do with the MSA: either generate one for each sequence or change the first line
+-[V ] Decide what to do with the MSA: either generate one for each sequence or change the first line
+
 -[ ] Plan prediction run calibrating the memory constraints (currently with hidden representations: 0.055gb per predictions, full gfp: 3.025tb)
+
 -[ ] Cluster script to cover the full dataset
+
 -[ ] Build custom model for the function prediction
+
+- [ ] Apply SE(3) Graph Attention Neural Networks
