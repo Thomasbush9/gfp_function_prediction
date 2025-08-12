@@ -1,6 +1,7 @@
 import os
 import re
 from pathlib import Path
+from typing import Literal
 
 import numpy as np
 import pandas as pd
@@ -306,7 +307,7 @@ def fasta2yaml(path: str):
         new_path = path.removesuffix(old_suffix) + new_suffix
         data_seq = {
             "version": 1,
-            "sequences": [{"protein": {"id": str(idx), "sequence": seq, "msa": msa}}],
+            "sequences": [{"protein": {"id": idx, "sequence": seq, "msa": msa}}],
         }
 
         try:
@@ -350,3 +351,19 @@ def yaml2fasta(path: str):
         out_f.write(sequence + "\n")
 
     print(f"[INFO] Saved FASTA file to {output_path}")
+
+
+def converter(path: str, src: Literal["fasta", "yaml"]):
+    # handle files:
+    function = fasta2yaml if src == "fasta" else yaml2fasta
+    suffix = "." + "yaml" if src == "yaml" else ".txt"
+    if os.path.isfile(path):
+        function(path)
+        print(f"File {path} correctly converted")
+    else:
+        for file in tqdm(Path(path).iterdir()):
+            if file.suffix == suffix:
+                function(str(file))
+            else:
+                continue
+        print(f"Directory {path} correctly converted")
