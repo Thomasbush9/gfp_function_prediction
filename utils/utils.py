@@ -354,6 +354,13 @@ def yaml2fasta(path: str):
 
 
 def converter(path: str, src: Literal["fasta", "yaml"]):
+    """
+    Converts a file or a directory from source to the other format
+
+    Args:
+    -path: [dir, file]
+    - src: the source file that you want to covert, Literal['fasta', 'yaml']
+    """
     # handle files:
     function = fasta2yaml if src == "fasta" else yaml2fasta
     suffix = "." + "yaml" if src == "yaml" else ".txt"
