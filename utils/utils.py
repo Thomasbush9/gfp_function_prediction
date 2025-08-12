@@ -287,6 +287,12 @@ def generate_fasta_data(dataset: pd.DataFrame, msa, training_data_dir, data_dir)
 
 # === easy converter ===
 def fasta2yaml(path: str):
+    """
+    Function to convert .fasta.txt files in Boltx format to .yaml in Boltz format
+
+    Args:
+    - path: path to fasta files to convert
+    """
     if os.path.isfile(path):
         seq, mapping, meta = load_seq_(path, return_meta=True)
         type_ = meta["type"]
@@ -308,3 +314,39 @@ def fasta2yaml(path: str):
                 yaml.dump(data_seq, file, sort_keys=False)
         except Exception as e:
             print(f"[✗] Failed to write {new_path}: {e}")
+
+
+def yaml2fasta(path: str):
+    """
+    Load protein info from YAML and save as FASTA-like text file.
+
+    Parameters
+    ----------
+    yaml_path : str
+        Path to the YAML file.
+    output_path : str
+        Path to save the output FASTA (.txt) file.
+    """
+    with open(path, "r") as f:
+        data = yaml.safe_load(f)
+
+    old_suffix = ".yaml"
+    new_suffix = ".fasta.txt"
+    output_path = path.removesuffix(old_suffix) + new_suffix
+
+    # Expect structure: version, sequences -> list of protein dicts
+    seq_entry = data["sequences"][0]["protein"]
+
+    protein_id = seq_entry["id"]  # e.g., "A"
+    msa_path = seq_entry["msa"]  # e.g., "raw_data/gfp_msa_b5fdc_0.a3m"
+    sequence = seq_entry["sequence"]  # long amino acid string
+
+    # Build header
+    header = f">{protein_id}|protein|{msa_path}"
+
+    # Write to output
+    with open(output_path, "w") as out_f:
+        out_f.write(header + "\n")
+        out_f.write(sequence + "\n")
+
+    print(f"[INFO] Saved FASTA file to {output_path}")
