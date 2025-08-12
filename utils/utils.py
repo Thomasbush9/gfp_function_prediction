@@ -43,7 +43,9 @@ def load_seq_(path: str, return_meta: bool = False):
         lines = [ln.strip() for ln in f if ln.strip()]
 
     if not lines or not lines[0].startswith(">"):
-        raise ValueError(f"File {path} does not look like a FASTA/A3M with a header on the first line.")
+        raise ValueError(
+            f"File {path} does not look like a FASTA/A3M with a header on the first line."
+        )
 
     header = lines[0]
     seq = "".join(lines[1:])
@@ -55,12 +57,7 @@ def load_seq_(path: str, return_meta: bool = False):
         parts = header_body.split("|", maxsplit=2)
         seq_type, idx, msa_path = (parts + [None, None, None])[:3]
 
-        meta = {
-            "type": seq_type,
-            "idx": idx,
-            "path": msa_path,
-            "header": header
-        }
+        meta = {"type": seq_type, "idx": idx, "path": msa_path, "header": header}
         return seq, mapping_db_seq, meta
 
     return seq, mapping_db_seq
@@ -289,10 +286,25 @@ def generate_fasta_data(dataset: pd.DataFrame, msa, training_data_dir, data_dir)
 
 
 # === easy converter ===
-def fasta2yaml(path:str):
-
+def fasta2yaml(path: str):
     if os.path.isfile(path):
+        seq, mapping, meta = load_seq_(path, return_meta=True)
+        type_ = meta["type"]
+        idx = meta["idx"]
+        msa = meta["path"]
+        header = meta["header"]
 
+        old_suffix = ".fasta.txt"
+        new_suffix = ".yaml"
 
+        new_path = path.removesuffix(old_suffix) + new_suffix
+        data_seq = {
+            "version": 1,
+            "sequences": [{"protein": {"id": str(idx), "sequence": seq, "msa": msa}}],
+        }
 
-
+        try:
+            with open(new_path, "w") as file:
+                yaml.dump(data_seq, file, sort_keys=False)
+        except Exception as e:
+            print(f"[✗] Failed to write {new_path}: {e}")
