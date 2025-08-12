@@ -13,12 +13,57 @@ def load_dataset(path: str, sep: None) -> pd.DataFrame:
     return pd.read_csv(path, sep=sep)
 
 
-def load_seq_(path: str):
+# def load_seq_(path: str):
+#     with open(path, "r") as f:
+#         file = f.readlines()
+#         seq = "".join([s.strip("\n") for s in file[1:]])
+#         mapping_db_seq = {str(i): i + 1 for i in range(len(seq))}
+#         return seq, mapping_db_seq
+def load_seq_(path: str, return_meta: bool = False):
+    """
+    Load a single-entry FASTA/A3M file.
+
+    Parameters
+    ----------
+    path : str
+        Path to the FASTA/A3M file.
+    return_meta : bool, optional
+        If True, also return a dict with 'type', 'idx', 'path', and 'header'.
+
+    Returns
+    -------
+    seq : str
+        The sequence from the file.
+    mapping_db_seq : dict
+        Maps sequence position (as str) to 1-based index.
+    meta : dict, optional
+        Returned only if return_meta=True.
+    """
     with open(path, "r") as f:
-        file = f.readlines()
-        seq = "".join([s.strip("\n") for s in file[1:]])
-        mapping_db_seq = {str(i): i + 1 for i in range(len(seq))}
-        return seq, mapping_db_seq
+        lines = [ln.strip() for ln in f if ln.strip()]
+
+    if not lines or not lines[0].startswith(">"):
+        raise ValueError(f"File {path} does not look like a FASTA/A3M with a header on the first line.")
+
+    header = lines[0]
+    seq = "".join(lines[1:])
+
+    mapping_db_seq = {str(i): i + 1 for i in range(len(seq))}
+
+    if return_meta:
+        header_body = header[1:]  # remove ">"
+        parts = header_body.split("|", maxsplit=2)
+        seq_type, idx, msa_path = (parts + [None, None, None])[:3]
+
+        meta = {
+            "type": seq_type,
+            "idx": idx,
+            "path": msa_path,
+            "header": header
+        }
+        return seq, mapping_db_seq, meta
+
+    return seq, mapping_db_seq
 
 
 def parse_mutation(mutation_str: str):
@@ -162,7 +207,23 @@ def get_numb_mut(mut: str) -> int:
 
 # === Generate Data Functions ===
 def generate_yaml_data(dataset: pd.DataFrame, msa, training_data_dir, data_dir):
-    """ """
+    """
+    Function to generate yaml data for Boltz Predictions.
+
+    Args:
+    - dataset: dataset with the mutated sequences, it must have the following
+      columns: seq_mutated
+    - msa: path to the msa path, if None it will be skipped
+    - training_data_dir: where to save the mutated sequences
+    - data_dir: where to save the idx
+
+    It saves each mutated sequences in the yaml format in its own separate folder with this structure:
+    data_dir
+        index.csv
+        training_data
+            seq_00001
+                seq_0001.yaml
+    """
     index_records = []
     for idx, row in tqdm(dataset.iterrows(), desc="Generating data"):
         mutated_seq = row["seq_mutated"]
@@ -190,12 +251,29 @@ def generate_yaml_data(dataset: pd.DataFrame, msa, training_data_dir, data_dir):
 
 
 def generate_fasta_data(dataset: pd.DataFrame, msa, training_data_dir, data_dir):
+    """
+    Function to generate fasta data for Boltz Predictions.
+
+    Args:
+    - dataset: dataset with the mutated sequences, it must have the following
+      columns: seq_mutated
+    - msa: path to the msa path, if None it will be skipped
+    - training_data_dir: where to save the mutated sequences
+    - data_dir: where to save the idx
+
+    It saves each mutated sequences in the fasta format in its own separate folder with this structure:
+    data_dir
+        index.csv
+        training_data
+            seq_00001
+                seq_0001.fasta.txt
+    """
     index_records = []
 
     for idx, row in tqdm(dataset.iterrows(), desc="Generating data"):
         mutated_seq = row["seq_mutated"]
         header = f">A|{idx}|{msa}"
-        filename = f"seq_{idx:05}.yaml"
+        filename = f"seq_{idx:05}.fasta.txt"
         filepath = os.path.join(training_data_dir, filename)
 
         try:
@@ -208,3 +286,13 @@ def generate_fasta_data(dataset: pd.DataFrame, msa, training_data_dir, data_dir)
     index_df = pd.DataFrame(index_records)
     index_df.to_csv(os.path.join(data_dir, "index.csv"), index=False)
     print(f"[✓] Index file written to: {os.path.join(data_dir, 'index.csv')}")
+
+
+# === easy converter ===
+def fasta2yaml(path:str):
+
+    if os.path.isfile(path):
+
+
+
+

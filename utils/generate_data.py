@@ -53,28 +53,4 @@ if __name__ == "__main__":
     else:
         generate_fasta_data(dataset, msa, training_data_dir, data_dir)
 
-    # 3. Generate YAML files and record index
-    index_records = []
-    for idx, row in tqdm(dataset.iterrows(), desc="Generating data"):
-        mutated_seq = row["seq_mutated"]
-
-        data_seq = {
-            "version": 1,
-            "sequences": [
-                {"protein": {"id": str(idx), "sequence": mutated_seq, "msa": msa}}
-            ],
-        }
-
-        filename = f"seq_{idx:05}.yaml"
-        filepath = os.path.join(training_data_dir, filename)
-
-        try:
-            with open(filepath, "w") as file:
-                yaml.dump(data_seq, file, sort_keys=False)
-            index_records.append({"idx": idx, "filename": filename})
-        except Exception as e:
-            print(f"[✗] Failed to write {filename}: {e}")
-    # 4. Save index.csv
-    index_df = pd.DataFrame(index_records)
-    index_df.to_csv(os.path.join(data_dir, "index.csv"), index=False)
-    print(f"[✓] Index file written to: {os.path.join(data_dir, 'index.csv')}")
+print("All the files have been generated correctly:")
