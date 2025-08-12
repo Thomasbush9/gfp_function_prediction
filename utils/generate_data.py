@@ -7,7 +7,13 @@ import pandas as pd
 import yaml
 from tqdm import tqdm
 
-from utils import generate_yaml_data, load_dataset, load_seq_, mutate_sequence
+from utils import (
+    generate_fasta_data,
+    generate_yaml_data,
+    load_dataset,
+    load_seq_,
+    mutate_sequence,
+)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -45,7 +51,7 @@ if __name__ == "__main__":
     if mode == "yaml":
         generate_yaml_data(dataset, msa, training_data_dir, data_dir)
     else:
-        pass
+        generate_fasta_data(dataset, msa, training_data_dir, data_dir)
 
     # 3. Generate YAML files and record index
     index_records = []

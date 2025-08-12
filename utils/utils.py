@@ -5,6 +5,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import yaml
+from sqlalchemy import except_
 from tqdm import tqdm
 
 
@@ -183,6 +184,27 @@ def generate_yaml_data(dataset: pd.DataFrame, msa, training_data_dir, data_dir):
         except Exception as e:
             print(f"[✗] Failed to write {filename}: {e}")
     # 4. Save index.csv
+    index_df = pd.DataFrame(index_records)
+    index_df.to_csv(os.path.join(data_dir, "index.csv"), index=False)
+    print(f"[✓] Index file written to: {os.path.join(data_dir, 'index.csv')}")
+
+
+def generate_fasta_data(dataset: pd.DataFrame, msa, training_data_dir, data_dir):
+    index_records = []
+
+    for idx, row in tqdm(dataset.iterrows(), desc="Generating data"):
+        mutated_seq = row["seq_mutated"]
+        header = f">A|{idx}|{msa}"
+        filename = f"seq_{idx:05}.yaml"
+        filepath = os.path.join(training_data_dir, filename)
+
+        try:
+            with open(filepath, "w") as f:
+                f.write(header + "\n")
+                f.write(mutated_seq + "\n")
+            index_records.append({"idx": idx, "filename": filename})
+        except Exception as e:
+            print(f"[x] Failed to write {filename}: {e}")
     index_df = pd.DataFrame(index_records)
     index_df.to_csv(os.path.join(data_dir, "index.csv"), index=False)
     print(f"[✓] Index file written to: {os.path.join(data_dir, 'index.csv')}")
