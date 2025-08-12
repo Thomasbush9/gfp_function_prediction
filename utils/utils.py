@@ -1,8 +1,11 @@
+import os
 import re
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import yaml
+from tqdm import tqdm
 
 
 def load_dataset(path: str, sep: None) -> pd.DataFrame:
@@ -49,12 +52,13 @@ def mutate_sequence(mutation_string, seq, mapping_db_seq):
     return None
 
     # Calculate the original distribution of num_mut
-    def get_numb_mut(mut:str)->int:
+    def get_numb_mut(mut: str) -> int:
         if type(mut) == str:
-            n = len(mut.split(':'))
-        else: 
+            n = len(mut.split(":"))
+        else:
             return 0
         return n
+
 
 def balanced_sampling(dataset: pd.DataFrame, n: int, output_file="balanced_subset.txt"):
     """
@@ -79,8 +83,7 @@ def balanced_sampling(dataset: pd.DataFrame, n: int, output_file="balanced_subse
     if n >= len(dataset):
         raise ValueError(f"n ({n}) must be less than dataset size ({len(dataset)})")
 
-
-    dataset['num_mut'] = dataset['aaMutations'].apply(lambda mut:get_numb_mut(mut))
+    dataset["num_mut"] = dataset["aaMutations"].apply(lambda mut: get_numb_mut(mut))
     original_dist = dataset["num_mut"].value_counts(normalize=True)
 
     # Calculate how many samples to select from each num_mut category
@@ -154,3 +157,32 @@ def get_numb_mut(mut: str) -> int:
     else:
         return 0
     return n
+
+
+# === Generate Data Functions ===
+def generate_yaml_data(dataset: pd.DataFrame, msa, training_data_dir, data_dir):
+    """ """
+    index_records = []
+    for idx, row in tqdm(dataset.iterrows(), desc="Generating data"):
+        mutated_seq = row["seq_mutated"]
+
+        data_seq = {
+            "version": 1,
+            "sequences": [
+                {"protein": {"id": str(idx), "sequence": mutated_seq, "msa": msa}}
+            ],
+        }
+
+        filename = f"seq_{idx:05}.yaml"
+        filepath = os.path.join(training_data_dir, filename)
+
+        try:
+            with open(filepath, "w") as file:
+                yaml.dump(data_seq, file, sort_keys=False)
+            index_records.append({"idx": idx, "filename": filename})
+        except Exception as e:
+            print(f"[✗] Failed to write {filename}: {e}")
+    # 4. Save index.csv
+    index_df = pd.DataFrame(index_records)
+    index_df.to_csv(os.path.join(data_dir, "index.csv"), index=False)
+    print(f"[✓] Index file written to: {os.path.join(data_dir, 'index.csv')}")

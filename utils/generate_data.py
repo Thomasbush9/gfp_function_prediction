@@ -7,7 +7,7 @@ import pandas as pd
 import yaml
 from tqdm import tqdm
 
-from utils import load_dataset, load_seq_, mutate_sequence
+from utils import generate_yaml_data, load_dataset, load_seq_, mutate_sequence
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -15,6 +15,9 @@ if __name__ == "__main__":
     parser.add_argument("--data", type=str, required=True)
     parser.add_argument("--msa", type=str, default=None)
     parser.add_argument("--original", type=str, required=True)
+    parser.add_argument(
+        "file_type", type=str, choices=["fasta", "yaml"], default="fasta"
+    )
     args = parser.parse_args()
 
     if not args.msa:
@@ -24,6 +27,7 @@ if __name__ == "__main__":
 
     original_seq_path = args.original
     dataset_path = args.data
+    mode = args.file_type
     seq, mapping = load_seq_(original_seq_path)
     dataset = load_dataset(dataset_path, sep="\t")
     dataset["seq_mutated"] = dataset["aaMutations"].apply(
@@ -37,6 +41,11 @@ if __name__ == "__main__":
 
     # Create directories
     os.makedirs(training_data_dir, exist_ok=True)
+
+    if mode == "yaml":
+        generate_yaml_data(dataset, msa, training_data_dir, data_dir)
+    else:
+        pass
 
     # 3. Generate YAML files and record index
     index_records = []
