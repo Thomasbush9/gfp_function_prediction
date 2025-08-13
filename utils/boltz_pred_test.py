@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from utils.utils import balanced_sampling
+from utils import balanced_sampling
 
 if __name__ == "__main__":
     print("Generating subsample")
@@ -29,7 +29,6 @@ if __name__ == "__main__":
     os.makedirs(sub_dir, exist_ok=True)
 
     args = parser.parse_args()
-
     data_path = Path(args.dataset)
     n = args.n
     main_dir = Path(args.main_dir)
@@ -57,7 +56,7 @@ if __name__ == "__main__":
     for idx in balanced_dataset.index:
         # Format index with zero padding
         padded_idx = str(idx).zfill(padding_length)
-        filename = f"seq_{padded_idx}" + file_1.suffix
+        filename = f"seq_{padded_idx}.fasta" + file_1.suffix
         source_path = main_dir / filename
         dest_path = Path(sub_dir) / filename
 

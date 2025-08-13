@@ -107,8 +107,8 @@ def mutate_sequence(mutation_string, seq, mapping_db_seq):
 def balanced_sampling(
     dataset: pd.DataFrame,
     n: int,
-    seed: Optional[int] = None,
     output_file="balanced_subset.txt",
+    seed: Optional[int] = None,
 ):
     if n >= len(dataset):
         raise ValueError(f"n ({n}) must be less than dataset size ({len(dataset)})")
@@ -285,7 +285,7 @@ def generate_cluster_fasta(
 
     for idx, row in tqdm(dataset.iterrows(), desc="Generating data"):
         mutated_seq = row["seq_mutated"]
-        header = f">A|{idx}|"
+        header = f">{idx}|protein|"
         filename = f"seq_{idx:05}.fasta.txt"
         filepath = os.path.join(training_data_dir, filename)
 
