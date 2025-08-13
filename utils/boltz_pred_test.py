@@ -17,7 +17,7 @@ if __name__ == "__main__":
     parser.add_argument("--dataset", type=str, required=True)
     parser.add_argument("--n", type=int, required=True)
     parser.add_argument(
-        "--yaml_dir", type=str, required=True, help="Directory containing YAML files"
+        "--main_dir", type=str, required=True, help="Directory containing files"
     )
 
     timestamp = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_subsample"
@@ -31,7 +31,7 @@ if __name__ == "__main__":
 
     data_path = Path(args.dataset)
     n = args.n
-    yaml_dir = Path(args.yaml_dir)
+    main_dir = Path(args.main_dir)
 
     # Load the dataset
     print(f"Loading dataset from: {data_path}")
@@ -42,25 +42,28 @@ if __name__ == "__main__":
     balanced_dataset = balanced_sampling(dataset, n, output_txt_path)
 
     # Copy corresponding YAML files
-    print(f"Copying YAML files from: {yaml_dir}")
+    print(f"Copying the files from: {main_dir}")
     copied_count = 0
 
     # Determine the maximum index to calculate padding length
     max_idx = max(balanced_dataset.index)
     padding_length = len(str(max_idx))
 
+    # Determine the type of files:
+    file_1 = [f for f in Path(main_dir).iterdir()][0]
+
     for idx in balanced_dataset.index:
         # Format index with zero padding
         padded_idx = str(idx).zfill(padding_length)
-        yaml_filename = f"seq_{padded_idx}.yaml"
-        source_yaml_path = yaml_dir / yaml_filename
-        dest_yaml_path = Path(sub_dir) / yaml_filename
+        filename = f"seq_{padded_idx}" + file_1.suffix
+        source_path = main_dir / filename
+        dest_path = Path(sub_dir) / filename
 
-        if source_yaml_path.exists():
-            shutil.copy2(source_yaml_path, dest_yaml_path)
+        if source_path.exists():
+            shutil.copy2(source_path, dest_path)
             copied_count += 1
         else:
-            print(f"Warning: YAML file not found: {source_yaml_path}")
+            print(f"Warning: file not found: {source_path}")
 
-    print(f"Successfully copied {copied_count} YAML files to: {data_dir}")
+    print(f"Successfully copied {copied_count}  files to: {data_dir}")
     print(f"Total files in output directory: {len(list(Path(data_dir).glob('*')))}")
