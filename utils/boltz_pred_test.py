@@ -19,6 +19,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--main_dir", type=str, required=True, help="Directory containing files"
     )
+    parser.add_argument("--seed", type=int, default=42)
 
     timestamp = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_subsample"
     base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -32,6 +33,7 @@ if __name__ == "__main__":
     data_path = Path(args.dataset)
     n = args.n
     main_dir = Path(args.main_dir)
+    seed = args.seed
 
     # Load the dataset
     print(f"Loading dataset from: {data_path}")
@@ -39,7 +41,7 @@ if __name__ == "__main__":
 
     # Generate balanced subsample and create txt file
     output_txt_path = os.path.join(data_dir, "balanced_subset.txt")
-    balanced_dataset = balanced_sampling(dataset, n, output_txt_path)
+    balanced_dataset = balanced_sampling(dataset, n, output_txt_path, seed)
 
     # Copy corresponding YAML files
     print(f"Copying the files from: {main_dir}")

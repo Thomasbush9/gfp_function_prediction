@@ -261,6 +261,46 @@ def generate_fasta_data(dataset: pd.DataFrame, msa, training_data_dir, data_dir)
     print(f"[✓] Index file written to: {os.path.join(data_dir, 'index.csv')}")
 
 
+def generate_cluster_fasta(
+    dataset: pd.DataFrame, training_data_dir: str, data_dir: str
+):
+    """
+    Function to generate fasta data for Kempner Cluster Predictions.
+    It works for the boltz workflow at: https://github.com/KempnerInstitute/boltz/tree/main/kempner_workflow/protein_fold_gpu
+
+    Args:
+    - dataset: dataset with the mutated sequences, it must have the following
+      columns: seq_mutated
+    - training_data_dir: where to save the mutated sequences
+    - data_dir: where to save the idx
+
+    It saves each mutated sequences in the fasta format in its own separate folder with this structure:
+    data_dir
+        index.csv
+        training_data
+            seq_00001
+                seq_0001.fasta.txt
+    """
+    index_records = []
+
+    for idx, row in tqdm(dataset.iterrows(), desc="Generating data"):
+        mutated_seq = row["seq_mutated"]
+        header = f">A|{idx}|"
+        filename = f"seq_{idx:05}.fasta.txt"
+        filepath = os.path.join(training_data_dir, filename)
+
+        try:
+            with open(filepath, "w") as f:
+                f.write(header + "\n")
+                f.write(mutated_seq + "\n")
+            index_records.append({"idx": idx, "filename": filename})
+        except Exception as e:
+            print(f"[x] Failed to write {filename}: {e}")
+    index_df = pd.DataFrame(index_records)
+    index_df.to_csv(os.path.join(data_dir, "index.csv"), index=False)
+    print(f"[✓] Index file written to: {os.path.join(data_dir, 'index.csv')}")
+
+
 # === easy converter ===
 def fasta2yaml(path: str):
     """

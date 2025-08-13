@@ -8,6 +8,7 @@ import yaml
 from tqdm import tqdm
 
 from utils import (
+    generate_cluster_fasta,
     generate_fasta_data,
     generate_yaml_data,
     load_dataset,
@@ -22,7 +23,7 @@ if __name__ == "__main__":
     parser.add_argument("--msa", type=str, default=None)
     parser.add_argument("--original", type=str, required=True)
     parser.add_argument(
-        "file_type", type=str, choices=["fasta", "yaml"], default="fasta"
+        "file_type", type=str, choices=["cluster", "fasta", "yaml"], default="fasta"
     )
     args = parser.parse_args()
 
@@ -50,7 +51,10 @@ if __name__ == "__main__":
 
     if mode == "yaml":
         generate_yaml_data(dataset, msa, training_data_dir, data_dir)
-    else:
+    elif mode == "fasta":
         generate_fasta_data(dataset, msa, training_data_dir, data_dir)
+    else:
+        generate_cluster_fasta(dataset, training_data_dir, data_dir)
+
 
 print("All the files have been generated correctly:")
