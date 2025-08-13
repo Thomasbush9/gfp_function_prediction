@@ -15,7 +15,7 @@ def delete_sources(path: Path, src: Literal["fasta", "yaml"]):
     if src == "yaml":
         exts = {".yaml", ".yml"}
     else:  # src == "fasta"
-        exts = {".a3m", ".fasta", ".fa", ".faa", ".txt"}  # adjust to your real inputs
+        exts = {".fasta", ".fa", ".faa", ".txt"}  # adjust to your real inputs
 
     for p in path.iterdir():
         if p.is_file() and p.suffix.lower() in exts:
