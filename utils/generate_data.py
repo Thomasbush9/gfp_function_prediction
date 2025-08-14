@@ -23,7 +23,7 @@ if __name__ == "__main__":
     parser.add_argument("--msa", type=str, default=None)
     parser.add_argument("--original", type=str, required=True)
     parser.add_argument(
-        "file_type", type=str, choices=["cluster", "fasta", "yaml"], default="fasta"
+        "--file_type", type=str, choices=["cluster", "fasta", "yaml"], default="fasta"
     )
     args = parser.parse_args()
 
