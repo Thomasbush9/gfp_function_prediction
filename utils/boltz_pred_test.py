@@ -56,7 +56,7 @@ if __name__ == "__main__":
     for idx in balanced_dataset.index:
         # Format index with zero padding
         padded_idx = str(idx).zfill(padding_length)
-        filename = f"seq_{padded_idx}.fasta" + file_1.suffix
+        filename = f"seq_{padded_idx}" + file_1.suffix
         source_path = main_dir / filename
         dest_path = Path(sub_dir) / filename
 

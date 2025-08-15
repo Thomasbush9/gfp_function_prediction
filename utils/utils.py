@@ -279,14 +279,14 @@ def generate_cluster_fasta(
         index.csv
         training_data
             seq_00001
-                seq_0001.fasta.txt
+                seq_0001.fasta
     """
     index_records = []
 
     for idx, row in tqdm(dataset.iterrows(), desc="Generating data"):
         mutated_seq = row["seq_mutated"]
         header = f">{idx}|protein|"
-        filename = f"seq_{idx:05}.fasta.txt"
+        filename = f"seq_{idx:05}.fasta"
         filepath = os.path.join(training_data_dir, filename)
 
         try:
