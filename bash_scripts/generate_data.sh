@@ -32,7 +32,7 @@ MSA_FILE="$DATA_DIR/gfp_msa_b5fdc_0.a3m"
 # Step 4: Run Python script with arguments
 cd "$SCRIPT_PY" || { echo "❌ Cannot cd into $SCRIPT_PY"; exit 1; }
 echo "🚀 Running generate_data.py..."
-python generate_data.py --data "$DATA_FILE" --original "$ORIGINAL_FILE" --msa "$MSA_FILE"
+python generate_data.py --data "$DATA_FILE" --original "$ORIGINAL_FILE" --msa "$MSA_FILE" --file_type cluster
 
 echo "✅ All done."
 

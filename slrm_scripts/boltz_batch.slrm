@@ -1,0 +1,231 @@
+#!/bin/bash
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=1
+#SBATCH --cpus-per-task=16
+#SBATCH --gpus-per-node=1
+#SBATCH --mem=256GB
+#SBATCH --partition=kempner_requeue
+#SBATCH --account=kempner_bsabatini_lab
+#SBATCH --time=2-00:00:00
+#SBATCH --output=boltz_batch-%N.%j.out
+#SBATCH --error=boltz_batch-%N.%j.err
+set -euo pipefail
+
+###############################################################################
+# USER CONFIG
+###############################################################################
+# Choose input mode: "dir" or "list"
+INPUT_MODE="dir"    # "dir" | "list"
+
+# If INPUT_MODE=dir:
+INPUT_DIR="/n/home06/tbush/gfp_function_prediction/data/trial_10"
+
+# If INPUT_MODE=list: path to a text file with absolute paths to FASTA files (one per line)
+FILE_LIST="/n/home06/tbush/gfp_function_prediction/data/filelist.txt"
+
+# Databases / caches (same as before)
+MMSEQ2_DB="/n/holylfs06/LABS/kempner_shared/Everyone/workflow/boltz/mmseq2_db"
+COLABFOLD_DB="/n/holylfs06/LABS/kempner_shared/Everyone/workflow/boltz/colabfold_db"
+BOLTZ_CACHE="/n/holylfs06/LABS/kempner_shared/Everyone/workflow/boltz/boltz_db"
+
+# Output roots (per-sample subfolders created under these)
+COLABFOLD_OUT_ROOT="/n/home06/tbush/gfp_function_prediction/data/outputs/msa"
+BOLTZ_OUT_ROOT="/n/home06/tbush/gfp_function_prediction/data/outputs/boltz"
+
+# Concurrency inside this single job (start with 1 to validate; increase later if desired)
+COLABFOLD_CONCURRENCY=1    # number of colabfold_search jobs at once (CPU heavy, I/O heavy)
+BOLTZ_CONCURRENCY=1        # number of boltz predict jobs at once (GPU-bound; keep 1 per GPU)
+
+# Extensions to accept
+EXTS="fa fasta"
+
+###############################################################################
+# ENV / MODULES
+###############################################################################
+THREADS=${SLURM_CPUS_PER_TASK:-16}
+export CUDA_VISIBLE_DEVICES=0
+export NUM_GPU_DEVICES=1
+
+echo "Loading modules..."
+module load python/3.12.8-fasrc01 gcc/14.2.0-fasrc01 cuda/12.9.1-fasrc01 cudnn/9.10.2.21_cuda12-fasrc01
+
+# ColabFold CLI
+export PATH="/n/holylfs06/LABS/kempner_shared/Everyone/common_envs/miniconda3/envs/boltz/localcolabfold/colabfold-conda/bin:$PATH"
+export COLABFOLD_DB="$COLABFOLD_DB"
+# Boltz env path
+BOLTZ_ENV="/n/holylfs06/LABS/kempner_shared/Everyone/common_envs/miniconda3/envs/boltz"
+
+mkdir -p "$COLABFOLD_OUT_ROOT" "$BOLTZ_OUT_ROOT" logs
+
+###############################################################################
+# BUILD FILE LIST
+###############################################################################
+declare -a ALL
+if [[ "$INPUT_MODE" == "dir" ]]; then
+  shopt -s nullglob
+  for ext in $EXTS; do
+    for f in "$INPUT_DIR"/*."$ext"; do
+      [[ -e "$f" ]] && ALL+=("$(realpath "$f")")
+    done
+  done
+  shopt -u nullglob
+elif [[ "$INPUT_MODE" == "list" ]]; then
+  mapfile -t ALL < <(awk 'NF{print $0}' "$FILE_LIST")
+else
+  echo "INPUT_MODE must be 'dir' or 'list'"; exit 2
+fi
+
+TOTAL=${#ALL[@]}
+if (( TOTAL == 0 )); then
+  echo "No input files found. Check INPUT_MODE and paths."; exit 1
+fi
+
+echo "==============================================="
+echo "BOLTZ MASS PIPELINE"
+echo "Inputs: $TOTAL | Mode: $INPUT_MODE"
+echo "Threads per process: $THREADS"
+echo "ColabFold concurrency: $COLABFOLD_CONCURRENCY"
+echo "Boltz concurrency:     $BOLTZ_CONCURRENCY"
+echo "GPU devices: $NUM_GPU_DEVICES (CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES)"
+echo "==============================================="
+MASTER_START=$(date +%s)
+
+###############################################################################
+# HELPERS
+###############################################################################
+# Normalize a sample name from a path
+sample_of () {
+  local p="$1"
+  local base="$(basename "$p")"
+  # Strip common double extensions like .fasta.txt or .fa.txt to a clean .fasta feel
+  base="${base%.txt}"
+  base="${base%.fa}"
+  base="${base%.fasta}"
+  echo "$base"
+}
+
+# One full pipeline for a single FASTA
+process_one () {
+  local INPUT_FASTA="$1"
+  local SAMPLE; SAMPLE="$(sample_of "$INPUT_FASTA")"
+
+  local COLA_DIR="$COLABFOLD_OUT_ROOT/$SAMPLE"
+  local BZ_DIR="$BOLTZ_OUT_ROOT/$SAMPLE"
+  local TMP_FASTA="tmp_${SAMPLE}.fasta"    # ensure .fasta extension for Boltz
+  local DONE_MARK="$BZ_DIR/.done"
+  local FAIL_MARK="$BZ_DIR/.failed"
+  local LOG="logs/${SAMPLE}.log"
+
+  if [[ -f "$DONE_MARK" ]]; then
+    echo "[skip] $SAMPLE done"; return 0
+  fi
+  mkdir -p "$COLA_DIR" "$BZ_DIR"
+
+  {
+    echo "=== $(date) START $SAMPLE ==="
+    echo "Input: $INPUT_FASTA"
+    echo "ColabFold out: $COLA_DIR"
+    echo "Boltz out:     $BZ_DIR"
+    echo "Threads: $THREADS"
+
+    # Sanity for tools
+    echo "which colabfold_search: $(which colabfold_search)"
+    colabfold_search --help | head -n1 || true
+
+    # STEP 1: ColabFold search
+    echo "STEP 1: colabfold_search ..."
+    colabfold_search "$INPUT_FASTA" "$MMSEQ2_DB" "$COLA_DIR" --thread "$THREADS" --gpu 1
+
+    # STEP 2: find a3m
+    echo "STEP 2: locate .a3m ..."
+    mapfile -t A3MS < <(find "$COLA_DIR" -maxdepth 1 -type f -name "*.a3m" | sort)
+    if (( ${#A3MS[@]} == 0 )); then
+	      echo "ERROR: no .a3m in $COLA_DIR"; ls -la "$COLA_DIR" || true; touch "$FAIL_MARK"; exit 10
+      fi
+      local A3M_ABS; A3M_ABS="$(realpath "${A3MS[0]}")"
+      echo "Using a3m: $A3M_ABS"
+
+      # Clean up .a3m — remove null bytes and empty trailing lines
+      echo "Cleaning MSA file..."
+      # Remove null bytes
+      tr -d '\000' < "$A3M_ABS" > "${A3M_ABS}.clean"
+      # Remove trailing empty lines
+      sed -i '${/^$/d;}' "${A3M_ABS}.clean"
+      mv "${A3M_ABS}.clean" "$A3M_ABS"
+
+    # STEP 3: Boltz FASTA with MSA path in header
+    echo "STEP 3: build Boltz FASTA ..."
+    local ORIGINAL_HEADER; ORIGINAL_HEADER="$(head -n1 "$INPUT_FASTA")"
+    local SEQ; SEQ="$(tail -n +2 "$INPUT_FASTA")"
+    echo "${ORIGINAL_HEADER}${A3M_ABS}" > "$TMP_FASTA"
+    echo "$SEQ" >> "$TMP_FASTA"
+    echo "TMP_FASTA: $TMP_FASTA (len: $(echo "$SEQ" | tr -d '\n' | wc -c))"
+
+    # STEP 4: Boltz prediction
+    echo "STEP 4: boltz predict ..."
+    echo "Activating $BOLTZ_ENV"
+    mamba activate "$BOLTZ_ENV"
+    echo "which boltz: $(which boltz)"
+    boltz --help | head -n1 || true
+
+    boltz predict "$TMP_FASTA" \
+      --cache "$BOLTZ_CACHE" \
+      --out_dir "$BZ_DIR" \
+      --devices $NUM_GPU_DEVICES \
+      --accelerator gpu
+
+    touch "$DONE_MARK"
+    rm -f "$FAIL_MARK" "$TMP_FASTA"
+    echo "=== $(date) DONE $SAMPLE ==="
+  } >"$LOG" 2>&1 || {
+    echo "[fail] $SAMPLE (see $LOG)"
+    touch "$FAIL_MARK"
+    rm -f "$TMP_FASTA" 2>/dev/null || true
+    return 1
+  }
+
+  echo "[ok] $SAMPLE"
+  return 0
+}
+
+###############################################################################
+# EXECUTION STRATEGY
+###############################################################################
+# Phase A: MSA generation (optionally parallelizable with CPU)
+# Phase B: Boltz predictions (GPU-bound, keep serial per GPU)
+
+# A) ColabFold stage
+echo "=== PHASE A: ColabFold searches (concurrency=$COLABFOLD_CONCURRENCY) ==="
+# When concurrency=1: simple for-loop. For >1, use a small job pool with background jobs.
+if (( COLABFOLD_CONCURRENCY == 1 )); then
+  # run step1+2+3+4 sequentially in process_one to keep code simple
+  for f in "${ALL[@]}"; do process_one "$f"; done
+else
+  # parallelize only the ColabFold part first, then Boltz sequentially per sample (advanced: split into two passes)
+  # Simple pool: run process_one but guard Boltz to 1 at a time via a lock.
+  # To keep it simple here, just spawn limited background jobs of the whole pipeline:
+  sem_limit=$COLABFOLD_CONCURRENCY
+  running=0
+  pids=()
+  for f in "${ALL[@]}"; do
+    process_one "$f" &
+    pids+=( $! )
+    ((running++))
+    if (( running >= sem_limit )); then
+      wait -n
+      ((running--))
+    fi
+  done
+  wait
+fi
+
+MASTER_END=$(date +%s)
+echo "==============================================="
+echo "ALL DONE at $(date)"
+echo "Processed: $TOTAL samples"
+echo "Total runtime: $((MASTER_END - MASTER_START)) s"
+echo "Logs in: logs/"
+echo "MSA outputs: $COLABFOLD_OUT_ROOT/"
+echo "Boltz outputs: $BOLTZ_OUT_ROOT/"
+echo "==============================================="
+
