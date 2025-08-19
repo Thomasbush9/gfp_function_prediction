@@ -1,5 +1,8 @@
 # Script to facilitate .cif feature extraction, inspiration by:
+from typing import List
+
 import numpy as np
+import torch
 
 
 def rotate_points(P, Q):
@@ -25,3 +28,24 @@ def get_shared_indices(idx1, idx2):
     i1 = np.where(np.in1d(idx1, idx2))[0]
     i2 = np.where(np.in1d(idx2, idx1))[0]
     return i1, i2
+
+
+def list2onehot(idxs: List, dim: int) -> torch.Tensor:
+    """
+    It takes as input a list of lists, each list is a residue containing the
+    idx of the neighbour residues.
+
+    Args:
+    - idxs: List[List]
+    - dim: int, number of residues
+
+    Returns:
+    - mat: Tensor, a the adjacencacy matrix (n_res, n_res)
+    """
+    shape = (dim, dim)
+    mat = torch.zeros(shape, dtype=torch.float32)
+    lengths = torch.tensor([len(r) for r in idxs])
+    row_idx = torch.arange(dim).repeat_interleave(lengths)
+    col_idx = torch.tensor([i for r in idxs for i in r])
+    mat[row_idx, col_idx] = 1
+    return mat
