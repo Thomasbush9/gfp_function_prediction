@@ -49,3 +49,20 @@ def list2onehot(idxs: List, dim: int) -> torch.Tensor:
     col_idx = torch.tensor([i for r in idxs for i in r])
     mat[row_idx, col_idx] = 1
     return mat
+
+
+def load_strain(es_dir: Path) -> torch.Tensor:
+    """
+    Args:
+    - es_dir: effective strain directory of .csv files
+    Returns:
+    - strain: torch.Tensor (n_files, n_residues)
+    """
+    return torch.stack(
+        [
+            torch.Tensor(pd.read_csv(file)["strain"].values)
+            for file in es_dir.iterdir()
+            if file.suffix == ".csv"
+        ],
+        dim=0,
+    )
