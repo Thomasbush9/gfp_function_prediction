@@ -58,7 +58,7 @@ echo "Submitting Slurm jobs..."
 for txt in "$OUTPUT_DIR"/id_*.txt; do
   [[ -s "$txt" ]] || continue  # skip if empty (belt & suspenders)
   # Submit and capture job id
-  submit_out="$(sbatch single_prediction.slrm "$txt")"
+  submit_out="$(sbatch single_prediction.slrm "$txt" "$OUTPUT_DIR")"
   job_id="$(awk '{print $NF}' <<<"$submit_out")"
   echo "Submitted $txt -> Job $job_id"
 done

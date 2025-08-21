@@ -18,11 +18,17 @@
 
 # Variables
 LIST_FILE="$1"   # <-- your .txt file with one FASTA path per line
+BASE_OUTPUT_DIR="$(realpath -m "$2")"
+RUN_TAG="${SLURM_ARRAY_JOB_ID:-${SLURM_JOB_ID:-manual}}_${SLURM_ARRAY_TASK_ID:-0}"
+OUTPUT_DIR="${BASE_OUTPUT_DIR}/${RUN_TAG}"
 MMSEQ2_DB="/n/holylfs06/LABS/kempner_shared/Everyone/workflow/boltz/mmseq2_db"
-COLABFOLD_OUTPUT_BASE="/n/home06/tbush/gfp_function_prediction/data/outputs/msa"
+COLABFOLD_OUTPUT_BASE="${OUTPUT_DIR}/msa"
 BOLTZ_CACHE="/n/holylfs06/LABS/kempner_shared/Everyone/workflow/boltz/boltz_db"
-BOLTZ_OUTPUT_BASE="/n/home06/tbush/gfp_function_prediction/data/outputs/boltz"
+BOLTZ_OUTPUT_BASE="${OUTPUT_DIR}/boltz"
 THREADS=$SLURM_CPUS_PER_TASK 
+
+mkdir -p "$COLABFOLD_OUTPUT_BASE" "$BOLTZ_OUTPUT_BASE"
+
 export CUDA_VISIBLE_DEVICES=0
 export NUM_GPU_DEVICES=1
 
@@ -76,7 +82,7 @@ while read -r INPUT_FASTA; do
 
     # STEP 4: Run Boltz
     mamba activate /n/holylfs06/LABS/kempner_shared/Everyone/common_envs/miniconda3/envs/boltz
-    boltz predict "$TEMP_FASTA" --cache "$BOLTZ_CACHE" --out_dir "$BOLTZ_OUTPUT_DIR" --devices $NUM_GPU_DEVICES --accelerator gpu
+    boltz predict "$TEMP_FASTA" --cache "$BOLTZ_CACHE" --out_dir "$BOLTZ_OUTPUT_DIR" --devices $NUM_GPU_DEVICES --accelerator gpu --no_kernels
     if [ $? -ne 0 ]; then
         echo "ERROR: Boltz failed for $INPUT_FASTA"
         continue
