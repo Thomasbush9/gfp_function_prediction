@@ -10,6 +10,11 @@ gfp_function_prediction/
     - bash_scripts/ # bash scripts for setup
     - scripts/ #python script for custom analysis
     - data/ # test data for boltz
+    - models/ # contains the ML model for function prediction
+    - slrm_scripts/ # scripts for kempner
+    - notebooks/
+    - utils/ # utility functions scripts
+
 
 ## Setup Instructions
 
@@ -52,14 +57,95 @@ This will:
 ```python
 python run_deformation_analysis --Path to predictions --o output path
 ```
+
+## Kempner Cluster Instructions:
+
+### Set-up Env and Dataset Generation:
+
+1. Start an interactive session, like:
+
+```{bash}
+salloc --partition=kempner_requeue --account=kempner_dev --ntasks=1 --cpus-per-task=16 --mem=16G --gres=gpu:1 --time=00-03:00:00
+```
+
+2. Load python and conda modules, and run from the project dir:
+
+```{bash}
+source bash_scripts/setup_env.sh
+# download the raw data and generate .fasta dir with 50k sequences:
+source bash_scripts/generate_data.sh type
+```
+Where,
+-type: is the type of data that you generates, options are: fasta, yaml and cluster
+
+3. Optional, create a sub-sample of the data:
+
+```{bash}
+python utils/boltz_pred_test.py --dataset --n --data_dir --seed
+```
+
+Where,
+
+- dataset: is the path to the .tsv original dataset
+- n: number of sequence in the sample
+- data_dir: path to the directory containing the full data
+
+It generates a balanced sample (same num_mutation distribution) in a new directory called: data_dir_data_timestamp.
+
+4. Converting a dataset to another file format, you can:
+
+```{bash}
+python utils/converted.py --path --src
+# it converts the files in the path dir to the src file extension
+```
+
+## Generating Boltz Predictions on the Kempner Cluster
+
+To generate the Boltz predictions on the Kempner cluster you run from the login node the following command:
+
+```{bash}
+source slrm_scripts/multi_pred.sh  INPUT_DIR N OUT_DIR
+```
+
+The script will:
+
+- Divide the input dir files into n sets, generate .txt containing the path to each .fasta (one per set)
+- create an out_dir/chunks_timestamp/ directory where the predictions will be stored
+
+- start N jobs launching the script: slrm_scripts/single_prediction.slrm n times (you can modify the resource of each job by modifying this script)
+
+- Predictions are saved as:
+
+out_dir/chunks_timestamp/
+    job_id/
+        boltz/ # prediction boltz
+        msa/ # msa generated
+
+## Generate Training Data for Model:
+
+You can generate tensor data for training your model by:
+
+```{bash}
+python models/modules/feature_extraction.py --dir --out --shard_size
+```
+
+Currently, the script generates n chunks depending on the shrd size. It expects a single with:
+It will expect a dir path structure like this:
+    dir/
+        seq_0000/
+            boltz_results/
+                predictions/
+                    seq_0000/
+                        .cif structure prediction
+                        confidence files
+The data will be:
+
+- coordinates (N, residues, 3)
+- confidence (N, residues, 1)
+- Effective strain (N, residues, 1)
+- adj_matrix (N, residues, residues)
+
+
 ## TODO:
 
--[V ] Decide what to do with the MSA: either generate one for each sequence or change the first line
-
--[ ] Plan prediction run calibrating the memory constraints (currently with hidden representations: 0.055gb per predictions, full gfp: 3.025tb)
-
--[ ] Cluster script to cover the full dataset
-
--[ ] Build custom model for the function prediction
-
-- [ ] Apply SE(3) Graph Attention Neural Networks
+- change generate_data.sh ->.fasta support

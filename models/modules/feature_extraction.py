@@ -1,7 +1,6 @@
 import os
 from argparse import ArgumentParser
 from pathlib import Path
-from time import sleep
 
 import numpy as np
 import torch
@@ -9,7 +8,7 @@ from torch_geometric.data import Data
 from tqdm import tqdm
 
 from .protein import Protein
-from .utils import list2onehot
+from .utils import list2onehot, load_strain
 
 """
 It will expect a dir path structure like this:
@@ -91,6 +90,7 @@ def edges_from_dense_adj(A):
 if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument("--dir", type=str, required=True)
+    parser.add_argument("--es_dir", type=str, required=False, default=None)
     parser.add_argument("--out", type=str, required=True)
     parser.add_argument("--shard_size", type=int, default=4096)
 
@@ -98,6 +98,11 @@ if __name__ == "__main__":
 
     dir_path = Path(args.dir)
     paths = [i for i in dir_path.iterdir() if i.is_dir()]
+    # find better application of strain
+    es_dir = Path(args.es_dir) if args.es_dir else None
+    if es_dir:
+        strain = load_strain(es_dir)
+        # strain is (N, 238)-> we can stack it to feat as 238, 5 tot x N
 
     pbar = tqdm(paths, desc="Starting")
 
