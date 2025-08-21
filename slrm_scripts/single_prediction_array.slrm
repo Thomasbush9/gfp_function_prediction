@@ -1,0 +1,104 @@
+#!/bin/bash
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=1
+#SBATCH --cpus-per-task=16
+#SBATCH --gpus-per-node=1
+#SBATCH --mem=256GB
+#SBATCH --partition=kempner_requeue
+#SBATCH --account=kempner_bsabatini_lab
+#SBATCH --time=4:00:00
+#SBATCH --mail-type=ALL
+#SBATCH --mail-user=thomasbush52@gmail.com
+# Use array-aware log names to avoid clobbering:
+#SBATCH --output=/n/home06/tbush/job_logs/%x.%A_%a.out
+
+
+set -euo pipefail
+
+# Select this task's chunk file from the manifest
+: "${SLURM_ARRAY_TASK_ID:?Need SLURM_ARRAY_TASK_ID}"
+: "${MANIFEST:?Need MANIFEST exported from sbatch}"
+: "${BASE_OUTPUT_DIR:?Need BASE_OUTPUT_DIR exported from sbatch}"
+
+LIST_FILE="$(sed -n "${SLURM_ARRAY_TASK_ID}p" "$MANIFEST")"
+if [[ -z "${LIST_FILE}" || ! -s "${LIST_FILE}" ]]; then
+  echo "Task ${SLURM_ARRAY_TASK_ID}: missing or empty LIST_FILE from manifest."
+  exit 1
+fi
+
+RUN_TAG="${SLURM_ARRAY_JOB_ID:-${SLURM_JOB_ID:-manual}}_${SLURM_ARRAY_TASK_ID}"
+OUTPUT_DIR="${BASE_OUTPUT_DIR}/${RUN_TAG}"
+MMSEQ2_DB="/n/holylfs06/LABS/kempner_shared/Everyone/workflow/boltz/mmseq2_db"
+COLABFOLD_OUTPUT_BASE="${OUTPUT_DIR}/msa"
+BOLTZ_CACHE="/n/holylfs06/LABS/kempner_shared/Everyone/workflow/boltz/boltz_db"
+BOLTZ_OUTPUT_BASE="${OUTPUT_DIR}/boltz"
+THREADS=${SLURM_CPUS_PER_TASK:-1}
+
+mkdir -p "$COLABFOLD_OUTPUT_BASE" "$BOLTZ_OUTPUT_BASE"
+
+export CUDA_VISIBLE_DEVICES=0
+export NUM_GPU_DEVICES=1
+
+module load python/3.12.8-fasrc01 gcc/14.2.0-fasrc01 cuda/12.9.1-fasrc01 cudnn/9.10.2.21_cuda12-fasrc01
+export PATH="/n/holylfs06/LABS/kempner_shared/Everyone/common_envs/miniconda3/envs/boltz/localcolabfold/colabfold-conda/bin:$PATH"
+export COLABFOLD_DB=/n/holylfs06/LABS/kempner_shared/Everyone/workflow/boltz/colabfold_db
+
+echo "Task ${SLURM_ARRAY_TASK_ID}: LIST_FILE=${LIST_FILE}"
+echo "Outputs -> ${OUTPUT_DIR}"
+echo "Threads -> ${THREADS}"
+
+while IFS= read -r INPUT_FASTA; do
+  [[ -z "$INPUT_FASTA" ]] && continue
+
+    BASENAME=$(basename "$INPUT_FASTA" .fa)   # strip extension for naming
+    COLABFOLD_OUTPUT_DIR="${COLABFOLD_OUTPUT_BASE}/${BASENAME}"
+    BOLTZ_OUTPUT_DIR="${BOLTZ_OUTPUT_BASE}/${BASENAME}"
+    TEMP_FASTA="${BASENAME}_prot_pipeline.fasta"
+
+    echo "==============================================="
+    echo "Processing: $INPUT_FASTA"
+    echo "Output dirs: $COLABFOLD_OUTPUT_DIR | $BOLTZ_OUTPUT_DIR"
+    echo "==============================================="
+
+    mkdir -p "$COLABFOLD_OUTPUT_DIR" "$BOLTZ_OUTPUT_DIR"
+
+    # STEP 1: ColabFold search
+    colabfold_search "$INPUT_FASTA" "$MMSEQ2_DB" "$COLABFOLD_OUTPUT_DIR" --thread "$THREADS" --gpu 1
+    if [ $? -ne 0 ]; then
+        echo "ERROR: ColabFold search failed for $INPUT_FASTA"
+        continue
+    fi
+
+    # STEP 2: Find a3m file
+    HEADER=$(head -n1 "$INPUT_FASTA")
+    PROTEIN_PREFIX=$(echo "$HEADER" | sed 's/^>//' | sed 's/|/_/g')
+    A3M_FILE="${COLABFOLD_OUTPUT_DIR}/${PROTEIN_PREFIX}.a3m"
+    if [ ! -f "$A3M_FILE" ]; then
+        A3M_FILE=$(find "$COLABFOLD_OUTPUT_DIR" -name "*.a3m" | head -n1)
+        if [ -z "$A3M_FILE" ]; then
+            echo "No a3m found for $INPUT_FASTA"
+            continue
+        fi
+    fi
+
+    # STEP 3: Create Boltz FASTA
+    A3M_ABSOLUTE=$(realpath "$A3M_FILE")
+    ORIGINAL_HEADER=$(head -n1 "$INPUT_FASTA")
+    SEQUENCE=$(tail -n+2 "$INPUT_FASTA")
+    echo "${ORIGINAL_HEADER}${A3M_ABSOLUTE}" > "$TEMP_FASTA"
+    echo "$SEQUENCE" >> "$TEMP_FASTA"
+
+    # STEP 4: Run Boltz
+    mamba activate /n/holylfs06/LABS/kempner_shared/Everyone/common_envs/miniconda3/envs/boltz
+    boltz predict "$TEMP_FASTA" --cache "$BOLTZ_CACHE" --out_dir "$BOLTZ_OUTPUT_DIR" --devices $NUM_GPU_DEVICES --accelerator gpu --no_kernels
+    if [ $? -ne 0 ]; then
+        echo "ERROR: Boltz failed for $INPUT_FASTA"
+        continue
+    fi
+
+    echo "Completed successfully: $INPUT_FASTA"
+done < "$LIST_FILE"
+
+echo "==============================================="
+echo "All jobs from $LIST_FILE finished"
+echo "==============================================="
