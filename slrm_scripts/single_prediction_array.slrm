@@ -28,13 +28,14 @@ fi
 
 RUN_TAG="${SLURM_ARRAY_JOB_ID:-${SLURM_JOB_ID:-manual}}_${SLURM_ARRAY_TASK_ID}"
 OUTPUT_DIR="${BASE_OUTPUT_DIR}/${RUN_TAG}"
+TEMP_FASTA_DIR_BASE="${OUTPUT_DIR}/temp"
 MMSEQ2_DB="/n/holylfs06/LABS/kempner_shared/Everyone/workflow/boltz/mmseq2_db"
 COLABFOLD_OUTPUT_BASE="${OUTPUT_DIR}/msa"
 BOLTZ_CACHE="/n/holylfs06/LABS/kempner_shared/Everyone/workflow/boltz/boltz_db"
 BOLTZ_OUTPUT_BASE="${OUTPUT_DIR}/boltz"
 THREADS=${SLURM_CPUS_PER_TASK:-1}
 
-mkdir -p "$COLABFOLD_OUTPUT_BASE" "$BOLTZ_OUTPUT_BASE"
+mkdir -p "$COLABFOLD_OUTPUT_BASE" "$BOLTZ_OUTPUT_BASE" "$TEMP_FASTA_DIR_BASE"
 
 export CUDA_VISIBLE_DEVICES=0
 export NUM_GPU_DEVICES=1
@@ -53,14 +54,15 @@ while IFS= read -r INPUT_FASTA; do
     BASENAME=$(basename "$INPUT_FASTA" .fa)   # strip extension for naming
     COLABFOLD_OUTPUT_DIR="${COLABFOLD_OUTPUT_BASE}/${BASENAME}"
     BOLTZ_OUTPUT_DIR="${BOLTZ_OUTPUT_BASE}/${BASENAME}"
-    TEMP_FASTA="${BASENAME}_prot_pipeline.fasta"
+    TEMP_FASTA_DIR="${TEMP_FASTA_DIR_BASE}/${BASENAME}"
+    TEMP_FASTA="${TEMP_FASTA_DIR}/${BASENAME}_prot_pipeline.fasta"
 
     echo "==============================================="
     echo "Processing: $INPUT_FASTA"
     echo "Output dirs: $COLABFOLD_OUTPUT_DIR | $BOLTZ_OUTPUT_DIR"
     echo "==============================================="
 
-    mkdir -p "$COLABFOLD_OUTPUT_DIR" "$BOLTZ_OUTPUT_DIR"
+    mkdir -p "$COLABFOLD_OUTPUT_DIR" "$BOLTZ_OUTPUT_DIR" "$TEMP_FASTA_DIR"
 
     # STEP 1: ColabFold search
     colabfold_search "$INPUT_FASTA" "$MMSEQ2_DB" "$COLABFOLD_OUTPUT_DIR" --thread "$THREADS" --gpu 1
