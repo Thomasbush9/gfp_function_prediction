@@ -86,10 +86,14 @@ python utils/boltz_pred_test.py --dataset --n --data_dir --seed
 
 Where,
 
-- dataset: is the path to the .tsv original dataset
+- dataset: is the path to the .tsv original dataset
 - n: number of sequence in the sample
 - data_dir: path to the directory containing the full data
 
+You can set the number of array concurrency inside the script or by doing:
+```{bash}
+export ARRAY_MAX_CONCURRENCY=
+```
 It generates a balanced sample (same num_mutation distribution) in a new directory called: data_dir_data_timestamp.
 
 4. Converting a dataset to another file format, you can:
@@ -104,7 +108,7 @@ python utils/converted.py --path --src
 To generate the Boltz predictions on the Kempner cluster you run from the login node the following command:
 
 ```{bash}
-source slrm_scripts/multi_pred.sh  INPUT_DIR N OUT_DIR
+source slrm_scripts/split_and_pred.sh INPUT_DIR N OUT_DIR
 ```
 
 The script will:
