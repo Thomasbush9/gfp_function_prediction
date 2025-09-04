@@ -125,6 +125,31 @@ out_dir/chunks_timestamp/
         boltz/ # prediction boltz
         msa/ # msa generated
 
+## Generate Effective Strain Data from Boltz-2's Predictions:
+
+You can generate Effective Strain data from Boltz's predictions by:
+
+1. Set up the effective strain environment by running this:
+
+```{bash}
+source bash_scripts/setup_es_analysis.sh
+```
+
+This will clone the Effective Strain repository in your home directory, create a mamba env with all the necessary packages to run the analysis
+
+2. Launch the Job Arrays:
+
+```{bash}
+source slrm_scripts/run_es.sh ROOT_DIR SCRIPT_DIR WT_PATH ARRAY_MAX_CONCURRENCY
+```
+
+Where:
+- ROOT_DIR= directory with the prediction of BOLTZ, in our case is the main directory with the job arrays
+- SCRIPT_DIR= path to the effective strain directory
+- WT_PATH= path to the structure file (.cif) of the wildtype
+
+By the default it will launch n jobs as many proteins have been predicted. The effective strain is saved as: ROOT_DIR/es/output.csv
+
 ## Generate Training Data for Model:
 
 You can generate tensor data for training your model by:
