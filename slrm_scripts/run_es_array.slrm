@@ -1,0 +1,37 @@
+#!/bin/bash
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=1
+#SBATCH --cpus-per-task=16
+#SBATCH --gpus-per-node=1
+#SBATCH --mem=256GB
+#SBATCH --partition=kempner_requeue
+#SBATCH --account=kempner_bsabatini_lab
+#SBATCH --time=1:00:00
+#SBATCH --mail-type=ALL
+#SBATCH --mail-user=thomasbush52@gmail.com
+# Use array-aware log names to avoid clobbering:
+#SBATCH --output=/n/home06/tbush/job_logs/%x.%A_%a.out
+
+
+set -euo pipefail
+
+cif_line=$(sed -n "${SLURM_ARRAY_TASK_ID}p" "$CIF_MANIFEST")
+out_line=$(sed -n "${SLURM_ARRAY_TASK_ID}p" "$OUT_MANIFEST")
+
+# Extract fields
+cif_path=$(echo "$cif_line" | cut -f2-)
+out_path=$(echo "$out_line" | cut -f2-)
+
+echo "Task $SLURM_ARRAY_TASK_ID"
+echo "  CIF   : $cif_path"
+echo "  OUT   : $out_path"
+
+mkdir -p "$(dirname "$out_path")"
+
+# Move into the script directory
+cd "$SCRIPT_DIR"
+
+mamba activate boltz-infer
+
+# Run the Python script
+python main.py "$WT_PATH" "$cif_path" -o "$out_path"

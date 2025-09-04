@@ -5,12 +5,18 @@ set -euo pipefail
 # Example: ./collect_and_submit.sh /data/chunks_20250829_121523
 
 ROOT_DIR="${1:-}"
-if [[ -z "$ROOT_DIR" ]]; then
-  echo "Usage: $0 ROOT_DIR"
+SCRIPT_DIR="${2:-}"
+WT_PATH="${3:-}"
+ARRAY_MAX_CONCURRENCY="${ARRAY_MAX_CONCURRENCY:-10}"
+
+if [[ -z "$ROOT_DIR" || -z "$SCRIPT_DIR" || -z "$WT_PATH" ]]; then
+  echo "Usage: $0 ROOT_DIR SCRIPT_DIR WT_PATH"
   exit 1
 fi
 
 ROOT_DIR="$(realpath "$ROOT_DIR")"
+SCRIPT_DIR="$(realpath "$SCRIPT_DIR")"
+WT_PATH="$(realpath "$WT_PATH")"
 
 # Two manifests: CIF inputs and future output CSVs
 CIF_MANIFEST="${ROOT_DIR}/cif_manifest.txt"
@@ -51,4 +57,13 @@ fi
 echo "Found $NUM_TASKS CIF files total."
 echo "CIF manifest : $CIF_MANIFEST"
 echo "OUT manifest : $OUT_MANIFEST"
+
+ARRAY_JOB_ID="$(
+  sbatch --parsable \
+    --array=1-"$NUM_TASKS"%${ARRAY_MAX_CONCURRENCY} \
+    --export=ALL,CIF_MANIFEST="$CIF_MANIFEST",OUT_MANIFEST="$OUT_MANIFEST",SCRIPT_DIR="$SCRIPT_DIR",WT_PATH="$WT_PATH" \
+    run_es_array.slrm
+)"
+
+echo "Submitted array job ${ARRAY_JOB_ID} with ${NUM_TASKS} tasks."
 
