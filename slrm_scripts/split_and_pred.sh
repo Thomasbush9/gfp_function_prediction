@@ -8,7 +8,7 @@ set -euo pipefail
 INPUT_DIR="${1:-}"
 N="${2:-}"
 OUTPUT_PARENT_DIR="${3:-}"
-ARRAY_MAX_CONCURRENCY="${ARRAY_MAX_CONCURRENCY:-20}"
+ARRAY_MAX_CONCURRENCY="${ARRAY_MAX_CONCURRENCY:-100}"
 
 if [[ -z "${INPUT_DIR}" || -z "${N}" || -z "${OUTPUT_PARENT_DIR}" ]]; then
   echo "Usage: $0 INPUT_DIR N OUTPUT_PARENT_DIR"
