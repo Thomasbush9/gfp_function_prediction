@@ -2,6 +2,7 @@
 from typing import List
 
 import numpy as np
+import pandas as pd
 import torch
 
 
@@ -51,18 +52,23 @@ def list2onehot(idxs: List, dim: int) -> torch.Tensor:
     return mat
 
 
-def load_strain(es_dir: Path) -> torch.Tensor:
+def load_strain(es_dir: Path):
     """
     Args:
     - es_dir: effective strain directory of .csv files
+
     Returns:
     - strain: torch.Tensor (n_files, n_residues)
+    - filenames: list of str, names of the files (without extension)
     """
-    return torch.stack(
-        [
-            torch.Tensor(pd.read_csv(file)["strain"].values)
-            for file in es_dir.iterdir()
-            if file.suffix == ".csv"
-        ],
-        dim=0,
-    )
+    tensors = []
+    filenames = []
+
+    for file in sorted(es_dir.iterdir()):
+        if file.suffix == ".csv":
+            df = pd.read_csv(file)
+            tensors.append(torch.tensor(df["strain"].values))
+            filenames.append(file.stem)  # or file.name if you want the .csv extension
+
+    strain = torch.stack(tensors, dim=0)
+    return strain, filenames
