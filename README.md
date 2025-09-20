@@ -177,4 +177,6 @@ The data will be:
 
 ## TODO:
 
-- change generate_data.sh ->.fasta support
+- Write script for GAT training
+- Update feature extraction script
+- Run simple MLP training with sweeps
