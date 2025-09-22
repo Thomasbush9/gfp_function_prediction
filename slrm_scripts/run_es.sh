@@ -7,7 +7,7 @@ set -euo pipefail
 ROOT_DIR="${1:-}"
 SCRIPT_DIR="${2:-}"
 WT_PATH="${3:-}"
-ARRAY_MAX_CONCURRENCY="${ARRAY_MAX_CONCURRENCY:-10}"
+ARRAY_MAX_CONCURRENCY="${4:-10}"
 
 if [[ -z "$ROOT_DIR" || -z "$SCRIPT_DIR" || -z "$WT_PATH" ]]; then
   echo "Usage: $0 ROOT_DIR SCRIPT_DIR WT_PATH"
