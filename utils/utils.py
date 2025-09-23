@@ -102,6 +102,96 @@ def mutate_sequence(mutation_string, seq, mapping_db_seq):
             return 0
         return n
 
+def get_numb_mut(mut: str) -> int:
+    """Helper function to count number of mutations from mutation string"""
+    if type(mut) == str:
+        n = len(mut.split(":"))
+    else:
+        return 0
+    return n
+def sample_with_num_mutations(
+    dataset: pd.DataFrame,
+    n: int,
+    num_mutations: int,
+    output_file: Optional[str] = None,
+    seed: Optional[int] = None,
+    replace: bool = False,
+    strict: bool = False,
+) -> pd.DataFrame:
+    """
+    Sample rows that have exactly `num_mutations` mutations.
+
+    Parameters
+    ----------
+    dataset : pd.DataFrame
+        Must contain a column 'aaMutations'. A helper `get_numb_mut` must exist.
+    n : int
+        Number of rows to sample.
+    num_mutations : int
+        The exact mutation count to filter by.
+    output_file : Optional[str]
+        If provided, writes a tab-separated file with (idx, n_mut).
+    seed : Optional[int]
+        RNG seed for reproducibility (uses numpy Generator).
+    replace : bool
+        If True, allows sampling with replacement.
+    strict : bool
+        If True and there are fewer than `n` eligible rows (and replace=False),
+        raise a ValueError. If False, will downshift `n` to the available count.
+
+    Returns
+    -------
+    pd.DataFrame
+        The sampled subset (copy).
+    """
+    rng = np.random.default_rng(seed)
+
+    # Work on a copy to avoid mutating the original df
+    df = dataset.copy()
+    df["num_mut"] = df["aaMutations"].apply(lambda mut: get_numb_mut(mut))
+
+    # Filter to the desired mutation count
+    eligible = df[df["num_mut"] == num_mutations]
+
+    if eligible.empty:
+        raise ValueError(
+            f"No rows found with num_mutations == {num_mutations} "
+            f"(eligible size = 0)."
+        )
+
+    if not replace:
+        if n > len(eligible):
+            if strict:
+                raise ValueError(
+                    f"Requested n ({n}) exceeds available rows with "
+                    f"{num_mutations} mutations ({len(eligible)})."
+                )
+            # downshift n to what we have
+            n = len(eligible)
+
+        # sample without replacement using numpy for reproducibility
+        indices = eligible.index.to_numpy()
+        chosen = rng.choice(indices, size=n, replace=False)
+    else:
+        # with replacement
+        indices = eligible.index.to_numpy()
+        chosen = rng.choice(indices, size=n, replace=True)
+
+    # Optional: stable order in output (sorted by original index)
+    chosen = np.sort(chosen)
+
+    subset = df.loc[chosen].copy()
+
+    if output_file:
+        with open(output_file, "w") as f:
+            f.write("idx\tn_mut\n")
+            for idx in chosen:
+                f.write(f"{idx}\t{df.loc[idx, 'num_mut']}\n")
+
+        print(f"Subset created with {len(subset)} samples (num_mut={num_mutations}).")
+        print(f"Results saved to: {output_file}")
+
+    return subset
 
 def balanced_sampling(
     dataset: pd.DataFrame,
@@ -168,17 +258,9 @@ def balanced_sampling(
     return balanced_dataset
 
 
-def get_numb_mut(mut: str) -> int:
-    """Helper function to count number of mutations from mutation string"""
-    if type(mut) == str:
-        n = len(mut.split(":"))
-    else:
-        return 0
-    return n
-
 
 # === Generate Data Functions ===
-def generate_yaml_data(dataset: pd.DataFrame, msa, training_data_dir, data_dir):
+def genkerate_yaml_data(dataset: pd.DataFrame, msa, training_data_dir, data_dir):
     """
     Function to generate yaml data for Boltz Predictions.
 
