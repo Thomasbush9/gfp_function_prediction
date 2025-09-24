@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-# Usage: ./split_and_submit.sh INPUT_DIR N OUTPUT_PARENT_DIR
+# Usage: ./split_and_submit.sh INPUT_DIR N OUTPUT_PARENT_DIR ARRAY_MAX_CONCURRENCY
 # Example: ./split_and_submit.sh /data/images 5 /data/jobs
 # Optional: set ARRAY_MAX_CONCURRENCY (default 10)
 

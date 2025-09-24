@@ -37,4 +37,4 @@ mkdir -p "$(dirname "$out_path")"
 
 # --- Run the Python script ---
 cd "$SCRIPT_DIR"
-python main.py --protA "$WT_PATH" --protB "$cif_path" -o "$out_path"
+python main.py --protA "$WT_PATH" --protB "$cif_path" --method all --min_plddt 70 --lddt_cutoffs 0.125 0.25 0.5 1 -o "$out_path"
