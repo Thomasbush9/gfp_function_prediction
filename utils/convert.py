@@ -2,7 +2,7 @@ from argparse import ArgumentParser
 from pathlib import Path
 from typing import Literal
 
-from utils.utils import converter
+from .utils import converter
 
 
 def delete_sources(path: Path, src: Literal["fasta", "yaml"]):

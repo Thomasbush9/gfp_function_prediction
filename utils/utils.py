@@ -428,7 +428,7 @@ def yaml2fasta(path: str):
         data = yaml.safe_load(f)
 
     old_suffix = ".yaml"
-    new_suffix = ".fasta.txt"
+    new_suffix = ".fasta"
     output_path = path.removesuffix(old_suffix) + new_suffix
 
     # Expect structure: version, sequences -> list of protein dicts
