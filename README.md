@@ -177,6 +177,6 @@ The data will be:
 
 ## TODO:
 
-- Write script for GAT training
-- Update feature extraction script
-- Run simple MLP training with sweeps
+- Test models with more data
+- Run effective strain with same sequence, test it with other models
+- clean the repository
