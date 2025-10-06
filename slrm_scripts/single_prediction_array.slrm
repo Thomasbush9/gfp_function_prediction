@@ -92,7 +92,7 @@ while IFS= read -r INPUT_FASTA; do
 
     # STEP 4: Run Boltz
     mamba activate /n/holylfs06/LABS/kempner_shared/Everyone/common_envs/miniconda3/envs/boltz
-    boltz predict "$TEMP_FASTA" --cache "$BOLTZ_CACHE" --out_dir "$BOLTZ_OUTPUT_DIR" --devices $NUM_GPU_DEVICES --accelerator gpu --no_kernels
+    boltz predict "$TEMP_FASTA" --cache "$BOLTZ_CACHE" --out_dir "$BOLTZ_OUTPUT_DIR" --devices $NUM_GPU_DEVICES --accelerator gpu
     if [ $? -ne 0 ]; then
         echo "ERROR: Boltz failed for $INPUT_FASTA"
         continue
