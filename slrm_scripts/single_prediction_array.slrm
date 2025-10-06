@@ -37,6 +37,20 @@ THREADS=${SLURM_CPUS_PER_TASK:-1}
 
 mkdir -p "$COLABFOLD_OUTPUT_BASE" "$BOLTZ_OUTPUT_BASE" "$TEMP_FASTA_DIR_BASE"
 
+# Solve issue with Triton kernel and stale files
+CACHE_BASE="${SLURM_TMPDIR:-/tmp}/$USER/${SLURM_JOB_ID:-$$}"
+mkdir -p "$CACHE_BASE"
+
+export TMPDIR="$CACHE_BASE/tmp"
+export XDG_CACHE_HOME="$CACHE_BASE/.cache"
+export TRITON_CACHE_DIR="$CACHE_BASE/triton-cache"
+export TORCHINDUCTOR_CACHE_DIR="$CACHE_BASE/torchinductor"
+export CUDA_CACHE_PATH="$CACHE_BASE/nv-cache"
+
+mkdir -p "$TMPDIR" "$XDG_CACHE_HOME" "$TRITON_CACHE_DIR" \
+         "$TORCHINDUCTOR_CACHE_DIR" "$CUDA_CACHE_PATH"
+
+
 export CUDA_VISIBLE_DEVICES=0
 export NUM_GPU_DEVICES=1
 
@@ -92,13 +106,24 @@ while IFS= read -r INPUT_FASTA; do
 
     # STEP 4: Run Boltz
     mamba activate /n/holylfs06/LABS/kempner_shared/Everyone/common_envs/miniconda3/envs/boltz
+
     boltz predict "$TEMP_FASTA" --cache "$BOLTZ_CACHE" --out_dir "$BOLTZ_OUTPUT_DIR" --devices $NUM_GPU_DEVICES --accelerator gpu
-    if [ $? -ne 0 ]; then
+    status=$?
+
+    if [ $status -ne 0 ]; then
+        echo "WARN: boltz predict failed once (status=$status). Clearing local JIT caches and retrying..."
+        rm -rf "$TRITON_CACHE_DIR" "$TORCHINDUCTOR_CACHE_DIR"
+        mkdir -p "$TRITON_CACHE_DIR" "$TORCHINDUCTOR_CACHE_DIR"
+        sleep 2
+        boltz predict "$TEMP_FASTA" --cache "$BOLTZ_CACHE" --out_dir "$BOLTZ_OUTPUT_DIR" --devices $NUM_GPU_DEVICES --accelerator gpu --recycling_steps 10 --diffusion_samples 25
+        status=$?
+    fi
+
+    if [ $status -ne 0 ]; then
         echo "ERROR: Boltz failed for $INPUT_FASTA"
         continue
     fi
 
-    echo "Completed successfully: $INPUT_FASTA"
 done < "$LIST_FILE"
 
 echo "==============================================="
