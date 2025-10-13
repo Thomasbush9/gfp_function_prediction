@@ -38,7 +38,15 @@ THREADS=${SLURM_CPUS_PER_TASK:-1}
 mkdir -p "$COLABFOLD_OUTPUT_BASE" "$BOLTZ_OUTPUT_BASE" "$TEMP_FASTA_DIR_BASE"
 
 # Solve issue with Triton kernel and stale files
-CACHE_BASE="${SLURM_TMPDIR:-/tmp}/$USER/${SLURM_JOB_ID:-$$}"
+# Use PID instead of SLURM_JOB_ID to ensure fresh cache on requeue
+CACHE_BASE="${SLURM_TMPDIR:-/tmp}/$USER/${SLURM_JOB_ID:-$$}_$$"
+
+# Force clean any existing cache directories from previous runs
+if [ -d "$CACHE_BASE" ]; then
+    echo "Cleaning stale cache directory from previous run..."
+    rm -rf "$CACHE_BASE"
+fi
+
 mkdir -p "$CACHE_BASE"
 
 export TMPDIR="$CACHE_BASE/tmp"
@@ -49,6 +57,13 @@ export CUDA_CACHE_PATH="$CACHE_BASE/nv-cache"
 
 mkdir -p "$TMPDIR" "$XDG_CACHE_HOME" "$TRITON_CACHE_DIR" \
          "$TORCHINDUCTOR_CACHE_DIR" "$CUDA_CACHE_PATH"
+
+# Cleanup function to remove cache on exit
+cleanup_cache() {
+    echo "Cleaning up cache directories..."
+    rm -rf "$CACHE_BASE"
+}
+trap cleanup_cache EXIT
 
 
 export CUDA_VISIBLE_DEVICES=0
