@@ -1,14 +1,23 @@
 #!/bin/bash
 set -euo pipefail
 
-# Usage: ./split_and_submit.sh INPUT_DIR N OUTPUT_PARENT_DIR ARRAY_MAX_CONCURRENCY
-# Example: ./split_and_submit.sh /data/images 5 /data/jobs
-# Optional: set ARRAY_MAX_CONCURRENCY (default 10)
+# Usage: ./split_and_submit.sh INPUT_DIR N OUTPUT_PARENT_DIR [ARRAY_MAX_CONCURRENCY] [--prewarm]
+# Example: ./split_and_submit.sh /data/images 5 /data/jobs 100 --prewarm
+# Optional: ARRAY_MAX_CONCURRENCY (default 100)
+# Optional: --prewarm flag to run cache pre-warming before array job
 
 INPUT_DIR="${1:-}"
 N="${2:-}"
 OUTPUT_PARENT_DIR="${3:-}"
 ARRAY_MAX_CONCURRENCY="${4:-100}"
+PREWARM=false
+
+# Check for --prewarm flag in any position
+for arg in "$@"; do
+    if [[ "$arg" == "--prewarm" ]]; then
+        PREWARM=true
+    fi
+done
 
 if [[ -z "${INPUT_DIR}" || -z "${N}" || -z "${OUTPUT_PARENT_DIR}" ]]; then
   echo "Usage: $0 INPUT_DIR N OUTPUT_PARENT_DIR"
@@ -76,15 +85,44 @@ fi
 
 echo "Submitting ${NUM_TASKS} array tasks (max concurrent: ${ARRAY_MAX_CONCURRENCY})..."
 
+# -------- Optional: Pre-warm Triton cache --------
+DEPENDENCY_FLAG=""
+if [ "$PREWARM" = true ]; then
+    echo ""
+    echo "Pre-warming Triton cache before array job..."
+    
+    # Get the directory where this script is located
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    
+    # Submit pre-warming job
+    PREWARM_JOB_ID="$(
+        sbatch --parsable \
+            --job-name=prewarm_triton \
+            "${SCRIPT_DIR}/prewarm_triton_cache.slrm"
+    )"
+    
+    echo "Submitted pre-warming job: ${PREWARM_JOB_ID}"
+    echo "Array job will wait for cache to be ready..."
+    
+    # Set dependency so array waits for pre-warming to complete
+    DEPENDENCY_FLAG="--dependency=afterok:${PREWARM_JOB_ID}"
+fi
+
+# -------- Submit array job --------
 # --parsable returns just the job ID so we can print it nicely
 ARRAY_JOB_ID="$(
   sbatch --parsable \
+    ${DEPENDENCY_FLAG} \
     --array=1-"$NUM_TASKS"%${ARRAY_MAX_CONCURRENCY} \
     --export=ALL,MANIFEST="$MANIFEST",BASE_OUTPUT_DIR="$OUTPUT_DIR" \
     single_prediction_array.slrm
 )"
 
+echo ""
 echo "Submitted array job ${ARRAY_JOB_ID} with ${NUM_TASKS} tasks."
+if [ "$PREWARM" = true ]; then
+    echo "  (Will start after pre-warming job ${PREWARM_JOB_ID} completes)"
+fi
 echo "Chunks dir: $OUTPUT_DIR"
 echo "Manifest:   $MANIFEST"
 

@@ -37,39 +37,83 @@ THREADS=${SLURM_CPUS_PER_TASK:-1}
 
 mkdir -p "$COLABFOLD_OUTPUT_BASE" "$BOLTZ_OUTPUT_BASE" "$TEMP_FASTA_DIR_BASE"
 
-# Solve issue with Triton kernel and stale files
-# Use PID instead of SLURM_JOB_ID to ensure fresh cache on requeue
-CACHE_BASE="${SLURM_TMPDIR:-/tmp}/$USER/${SLURM_JOB_ID:-$$}_$$"
+# ============================================================================
+# Triton Cache Setup - Use shared pre-warmed cache for GPU kernels
+# ============================================================================
 
-# Force clean any existing cache directories from previous runs
-if [ -d "$CACHE_BASE" ]; then
-    echo "Cleaning stale cache directory from previous run..."
-    rm -rf "$CACHE_BASE"
+# Load modules first (needed for version detection)
+module load python/3.12.8-fasrc01 gcc/14.2.0-fasrc01 cuda/12.9.1-fasrc01 cudnn/9.10.2.21_cuda12-fasrc01
+
+# Get version information for cache directory
+BOLTZ_VERSION=$(python -c "import boltz; print(boltz.__version__)" 2>/dev/null || echo "unknown")
+TRITON_VERSION=$(python -c "import triton; print(triton.__version__)" 2>/dev/null || echo "unknown")
+PYTORCH_VERSION=$(python -c "import torch; print(torch.__version__)" 2>/dev/null || echo "unknown")
+CUDA_VERSION=$(python -c "import torch; print(torch.version.cuda)" 2>/dev/null || echo "unknown")
+GPU_ARCH=$(nvidia-smi --query-gpu=name --format=csv,noheader | head -n1 | tr ' ' '_')
+
+CACHE_VERSION="${BOLTZ_VERSION}_triton${TRITON_VERSION}_pytorch${PYTORCH_VERSION}_cuda${CUDA_VERSION}_${GPU_ARCH}"
+SHARED_CACHE_BASE="/n/holylfs06/LABS/kempner_shared/Everyone/workflow/boltz/triton_caches"
+SHARED_CACHE="${SHARED_CACHE_BASE}/${CACHE_VERSION}"
+
+# Check if shared cache exists, otherwise fall back to local cache
+if [ -d "$SHARED_CACHE" ]; then
+    echo "Using shared pre-warmed Triton cache: $SHARED_CACHE"
+    export TRITON_CACHE_DIR="${SHARED_CACHE}/triton"
+    export TORCHINDUCTOR_CACHE_DIR="${SHARED_CACHE}/inductor"
+    export CUDA_CACHE_PATH="${SHARED_CACHE}/cuda"
+    
+    # Use task-specific temp directory
+    TEMP_BASE="${SLURM_TMPDIR:-/tmp}/$USER/boltz_temp_${SLURM_ARRAY_JOB_ID}_${SLURM_ARRAY_TASK_ID}"
+    export TMPDIR="$TEMP_BASE/tmp"
+    export XDG_CACHE_HOME="$TEMP_BASE/.cache"
+    mkdir -p "$TMPDIR" "$XDG_CACHE_HOME"
+    
+    # Cleanup temp on exit
+    cleanup_temp() {
+        echo "Cleaning up temporary directories..."
+        rm -rf "$TEMP_BASE"
+    }
+    trap cleanup_temp EXIT
+    
+else
+    echo "WARNING: Shared cache not found at $SHARED_CACHE"
+    echo "Falling back to task-local cache (kernels will be compiled on-demand)"
+    
+    # Fall back to task-specific local cache
+    CACHE_BASE="${SLURM_TMPDIR:-/tmp}/$USER/boltz_local_${SLURM_ARRAY_JOB_ID}_${SLURM_ARRAY_TASK_ID}"
+    
+    # Clean any stale cache from previous runs
+    if [ -d "$CACHE_BASE" ]; then
+        echo "Cleaning stale local cache..."
+        rm -rf "$CACHE_BASE"
+    fi
+    
+    mkdir -p "$CACHE_BASE"
+    
+    export TMPDIR="$CACHE_BASE/tmp"
+    export XDG_CACHE_HOME="$CACHE_BASE/.cache"
+    export TRITON_CACHE_DIR="$CACHE_BASE/triton"
+    export TORCHINDUCTOR_CACHE_DIR="$CACHE_BASE/inductor"
+    export CUDA_CACHE_PATH="$CACHE_BASE/cuda"
+    
+    mkdir -p "$TMPDIR" "$XDG_CACHE_HOME" "$TRITON_CACHE_DIR" \
+             "$TORCHINDUCTOR_CACHE_DIR" "$CUDA_CACHE_PATH"
+    
+    # Cleanup local cache on exit
+    cleanup_cache() {
+        echo "Cleaning up local cache directories..."
+        rm -rf "$CACHE_BASE"
+    }
+    trap cleanup_cache EXIT
 fi
 
-mkdir -p "$CACHE_BASE"
-
-export TMPDIR="$CACHE_BASE/tmp"
-export XDG_CACHE_HOME="$CACHE_BASE/.cache"
-export TRITON_CACHE_DIR="$CACHE_BASE/triton-cache"
-export TORCHINDUCTOR_CACHE_DIR="$CACHE_BASE/torchinductor"
-export CUDA_CACHE_PATH="$CACHE_BASE/nv-cache"
-
-mkdir -p "$TMPDIR" "$XDG_CACHE_HOME" "$TRITON_CACHE_DIR" \
-         "$TORCHINDUCTOR_CACHE_DIR" "$CUDA_CACHE_PATH"
-
-# Cleanup function to remove cache on exit
-cleanup_cache() {
-    echo "Cleaning up cache directories..."
-    rm -rf "$CACHE_BASE"
-}
-trap cleanup_cache EXIT
+echo "Triton cache configured for version: $CACHE_VERSION"
 
 
 export CUDA_VISIBLE_DEVICES=0
 export NUM_GPU_DEVICES=1
 
-module load python/3.12.8-fasrc01 gcc/14.2.0-fasrc01 cuda/12.9.1-fasrc01 cudnn/9.10.2.21_cuda12-fasrc01
+# Modules already loaded above for version detection
 export PATH="/n/holylfs06/LABS/kempner_shared/Everyone/common_envs/miniconda3/envs/boltz/localcolabfold/colabfold-conda/bin:$PATH"
 export COLABFOLD_DB=/n/holylfs06/LABS/kempner_shared/Everyone/workflow/boltz/colabfold_db
 
