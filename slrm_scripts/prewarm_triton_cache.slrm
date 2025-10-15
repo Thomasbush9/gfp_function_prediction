@@ -68,8 +68,9 @@ WARMUP_DIR="/tmp/triton_warmup_$$"
 mkdir -p "$WARMUP_DIR"
 
 # Create a small test protein sequence (ubiquitin - a commonly used test protein)
+# Format: >chain|type|description (Boltz-2 specific format)
 cat > "${WARMUP_DIR}/test_protein.fasta" << 'EOF'
->test_protein
+>A|protein|empty
 MQIFVKTLTGKTITLEVEPSDTIENVKAKIQDKEGIPPDQQRLIFAGKQLEDGRTLSDYNIQKESTLHLVLRLRGG
 EOF
 
@@ -94,6 +95,13 @@ boltz predict "${WARMUP_DIR}/test_protein.fasta" \
     --diffusion_samples 1
 
 if [ $? -eq 0 ]; then
+    # Check if cache actually has content (kernels compiled)
+    CACHE_SIZE=$(du -sm "$SHARED_CACHE" 2>/dev/null | cut -f1)
+    if [ "$CACHE_SIZE" -lt 10 ]; then
+        echo "WARNING: Cache size is very small (${CACHE_SIZE}MB). Kernels may not have been compiled."
+        echo "Check the Boltz output above for errors."
+    fi
+    
     echo "Cache pre-warming successful!"
     
     # Write metadata file
