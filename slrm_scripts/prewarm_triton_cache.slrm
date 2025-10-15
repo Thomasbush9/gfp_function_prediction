@@ -31,11 +31,14 @@ GPU_ARCH=$(nvidia-smi --query-gpu=name --format=csv,noheader | head -n1 | tr ' '
 
 # Create version-specific cache directory
 CACHE_VERSION="${BOLTZ_VERSION}_triton${TRITON_VERSION}_pytorch${PYTORCH_VERSION}_cuda${CUDA_VERSION}_${GPU_ARCH}"
-SHARED_CACHE_BASE="/n/holylfs06/LABS/kempner_shared/Everyone/workflow/boltz/triton_caches"
-SHARED_CACHE="${SHARED_CACHE_BASE}/${CACHE_VERSION}"
+
+# Use home directory for cache storage
+CACHE_BASE="$HOME/.boltz_triton_caches"
+SHARED_CACHE="${CACHE_BASE}/${CACHE_VERSION}"
 
 echo "Cache version: ${CACHE_VERSION}"
 echo "Cache location: ${SHARED_CACHE}"
+echo "Cache base: ${CACHE_BASE}"
 
 # Check if cache already exists and is recent (less than 7 days old)
 if [ -d "$SHARED_CACHE" ]; then
@@ -50,6 +53,7 @@ if [ -d "$SHARED_CACHE" ]; then
     fi
 fi
 
+# Create cache directory
 mkdir -p "$SHARED_CACHE"
 
 # Set environment variables for cache
@@ -101,17 +105,15 @@ PyTorch version: ${PYTORCH_VERSION}
 CUDA version: ${CUDA_VERSION}
 GPU architecture: ${GPU_ARCH}
 Job ID: ${SLURM_JOB_ID}
+User: ${USER}
 EOF
-    
-    # Set proper permissions for sharing
-    chmod -R 755 "$SHARED_CACHE"
     
     # Display cache size
     echo "Cache size: $(du -sh "$SHARED_CACHE" | cut -f1)"
     echo "Cache location: $SHARED_CACHE"
     
     # Create a symlink to "latest" for convenience
-    ln -sfn "$SHARED_CACHE" "${SHARED_CACHE_BASE}/latest"
+    ln -sfn "$SHARED_CACHE" "${CACHE_BASE}/latest"
     
 else
     echo "ERROR: Cache pre-warming failed!"

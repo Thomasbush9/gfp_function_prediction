@@ -3,7 +3,8 @@
 
 set -euo pipefail
 
-CACHE_BASE="/n/holylfs06/LABS/kempner_shared/Everyone/workflow/boltz/triton_caches"
+# Use home directory for cache storage
+CACHE_BASE="$HOME/.boltz_triton_caches"
 
 # Function to display usage
 usage() {

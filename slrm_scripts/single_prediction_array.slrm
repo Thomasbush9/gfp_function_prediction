@@ -52,8 +52,10 @@ CUDA_VERSION=$(python -c "import torch; print(torch.version.cuda)" 2>/dev/null |
 GPU_ARCH=$(nvidia-smi --query-gpu=name --format=csv,noheader | head -n1 | tr ' ' '_')
 
 CACHE_VERSION="${BOLTZ_VERSION}_triton${TRITON_VERSION}_pytorch${PYTORCH_VERSION}_cuda${CUDA_VERSION}_${GPU_ARCH}"
-SHARED_CACHE_BASE="/n/holylfs06/LABS/kempner_shared/Everyone/workflow/boltz/triton_caches"
-SHARED_CACHE="${SHARED_CACHE_BASE}/${CACHE_VERSION}"
+
+# Use home directory for cache storage
+CACHE_BASE="$HOME/.boltz_triton_caches"
+SHARED_CACHE="${CACHE_BASE}/${CACHE_VERSION}"
 
 # Check if shared cache exists, otherwise fall back to local cache
 if [ -d "$SHARED_CACHE" ]; then
