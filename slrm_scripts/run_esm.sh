@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-if [[ $# -lt 5 ]]; then
+if [[ $# -lt 3 ]]; then
   echo "Usage: $0 DIR N WORKER_SLRM PYTHON_SCRIPT [-- py-args...]"
   exit 1
 fi 
@@ -9,9 +9,10 @@ fi
 DIR="$1";
 N="$2"; 
 OUT_DIR="$3";
-WORKER="$4";
-PYTHON_SCRIPT="$5";
-shift 5
+shift 3
+# WORKER="$4";
+# PYTHON_SCRIPT="$5";
+# shift 3
 #
 #we define the args for the python scritp 
 # PY_ARGS=()
@@ -21,7 +22,7 @@ shift 5
 # fi 
 #
 # make a working folder to hold the chunk list for each array
-STAMP="$(date +%Y%m%d%_%H%M%S)"
+STAMP="$(date +%Y%m%d_%H%M%S)"
 CHUNK_DIR="${OUT_DIR}/chunks_${STAMP}"
 mkdir -p "$CHUNK_DIR"
 
@@ -48,5 +49,5 @@ done
 
 # here submit the job
 echo "Division completed: $NUM_FILES submited in $CHUNK_DIR"
-sbatch --array=0-$((N-1)) "$WORKER" "$CHUNK_DIR" "$PYTHON_SCRIPT" 
+# sbatch --array=0-$((N-1)) "$WORKER" "$CHUNK_DIR" "$PYTHON_SCRIPT" 
 
