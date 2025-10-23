@@ -1,0 +1,29 @@
+#!/bin/bash
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=1
+#SBATCH --cpus-per-task=16
+#SBATCH --gpus-per-node=1
+#SBATCH --mem=256GB
+#SBATCH --partition=kempner_requeue
+#SBATCH --account=kempner_bsabatini_lab
+#SBATCH --time=1:00:00
+#SBATCH --mail-type=ALL
+#SBATCH --mail-user=thomasbush52@gmail.com
+#SBATCH --output=/n/home06/tbush/job_logs/%x.%A_%a.out
+
+
+set -euo pipefail
+# take care of the envs
+module load python/3.12.8-fasrc01 gcc/14.2.0-fasrc01 cuda/12.9.1-fasrc01 cudnn/9.10.2.21_cuda12-fasrc01
+source "$(conda info --base)/etc/profile.d/conda.sh"
+
+mamba activate /n/home06/tbush/envs/esm
+
+
+echo "Env activated"
+
+# change to the script directory for safekeeping
+
+cd ${SCRIPT_DIR}
+
+
