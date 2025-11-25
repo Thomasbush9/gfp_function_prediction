@@ -45,7 +45,7 @@ mkdir -p "$COLABFOLD_OUTPUT_BASE" "$BOLTZ_OUTPUT_BASE" "$TEMP_FASTA_DIR_BASE"
 # ============================================================================
 
 # Global shared JIT cache root (persistent, survives preemption)
-JIT_CACHE_ROOT="/n/holylfs06/LABS/kempner_shared/Everyone/workflow/boltz/jit_cache"
+JIT_CACHE_ROOT="/n/home06/tbush/boltz_jit_cache"
 # Optionally version by CUDA/driver/code if needed, e.g.:
 # JIT_CACHE_ROOT="${JIT_CACHE_ROOT}_cuda12.9_$(git rev-parse --short HEAD)"
 
