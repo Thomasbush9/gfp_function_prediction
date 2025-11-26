@@ -1,11 +1,14 @@
 #!/bin/bash
 
 #SBATCH -J hf-download             # job name
-#SBATCH -p shared       # CPU-only SLURM partitions (e.g., shared or sapphire)
-#SBATCH -N 1                       # number of nodes
-#SBATCH -n 8                       # number of cores
-#SBATCH --mem 32G                  # memory pool per node
-#SBATCH -t 03-00:00                # time (D-HH:MM)
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=1
+#SBATCH --cpus-per-task=16
+#SBATCH --gpus-per-node=1
+#SBATCH --mem=32GB
+#SBATCH --partition=kempner_requeue
+#SBATCH --account=kempner_bsabatini_lab
+#SBATCH --time=00-01:00              # time (D-HH:MM)
 #SBATCH --export=ALL               # export all environment variables
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=thomasbush52@gmail.com
