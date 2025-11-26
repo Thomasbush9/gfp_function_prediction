@@ -140,11 +140,11 @@ while IFS= read -r INPUT_FASTA; do
     # STEP 4: Run Boltz
     mamba activate /n/holylfs06/LABS/kempner_shared/Everyone/common_envs/miniconda3/envs/boltz
 
-    boltz predict "$TEMP_FASTA" --cache "$BOLTZ_CACHE" --out_dir "$BOLTZ_OUTPUT_DIR" --devices $NUM_GPU_DEVICES --accelerator gpu
+    boltz predict "$TEMP_FASTA" --cache "$BOLTZ_CACHE" --out_dir "$BOLTZ_OUTPUT_DIR" --devices $NUM_GPU_DEVICES --accelerator gpu --recycling_steps 10 --diffusion_samples 25
     status=$?
 
     if [ $status -ne 0 ]; then
-        echo "WARN: boltz predict failed once (status=$status). Retrying with adjusted settings (shared JIT cache preserved)..."
+        echo "WARN: boltz predict failed once (status=$status). Retrying with same settings..."
         sleep 2
         boltz predict "$TEMP_FASTA" --cache "$BOLTZ_CACHE" --out_dir "$BOLTZ_OUTPUT_DIR" \
             --devices $NUM_GPU_DEVICES --accelerator gpu --recycling_steps 10 --diffusion_samples 25
