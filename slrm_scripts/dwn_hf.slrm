@@ -1,0 +1,36 @@
+#!/bin/bash
+
+#SBATCH -J hf-download             # job name
+#SBATCH -p shared       # CPU-only SLURM partitions (e.g., shared or sapphire)
+#SBATCH -N 1                       # number of nodes
+#SBATCH -n 8                       # number of cores
+#SBATCH --mem 32G                  # memory pool per node
+#SBATCH -t 03-00:00                # time (D-HH:MM)
+#SBATCH --export=ALL               # export all environment variables
+#SBATCH --mail-type=ALL
+#SBATCH --mail-user=thomasbush52@gmail.com
+# Use array-aware log names to avoid clobbering:
+#SBATCH --output=/n/home06/tbush/job_logs/%x.%A_%a.out
+
+set -euo pipefail 
+
+# Set HF model path (https://huggingface.co/deepseek-ai/DeepSeek-R1-0528-Qwen3-8B)
+HF_Model_Path="EvolutionaryScale/esmc-300m-2024-12"
+
+# Load shared conda environment (no need to install on Kempner AI cluster)
+module load python/3.10.13-fasrc01
+conda deactivate
+conda activate /n/holylfs06/LABS/kempner_shared/Everyone/common_envs/hf_hub
+echo "Running Python from conda environment: $(which python)"
+
+# Set HF home & cache dir
+export HF_HOME="/n/home06/tbush/hf_models_cache"
+export HF_HUB_CACHE="$HF_HOME"
+echo "HF_HUB_CACHE set to: $HF_HUB_CACHE"
+
+# Download HF model
+export HF_HUB_ENABLE_HF_TRANSFER=1
+
+huggingface-cli download $HF_Model_Path \
+    --local-dir "$HF_HUB_CACHE/$(basename $HF_Model_Path)" \
+    --local-dir-use-symlinks False
