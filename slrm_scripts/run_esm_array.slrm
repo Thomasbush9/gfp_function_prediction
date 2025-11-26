@@ -14,67 +14,37 @@
 
 set -euo pipefail
 
-if [[ $# -lt 3 ]]; then
-  echo "Usage: $0 CHUNK_DIR OUT_DIR PYTHON_SCRIPT [-- py-args...]"
+# Validate required environment variables
+: "${SLURM_ARRAY_TASK_ID:?Need SLURM_ARRAY_TASK_ID}"
+: "${MANIFEST:?Need MANIFEST exported from sbatch}"
+: "${BASE_OUTPUT_DIR:?Need BASE_OUTPUT_DIR exported from sbatch}"
+
+# Read the chunk .txt file path from manifest using SLURM_ARRAY_TASK_ID
+FASTA_LIST="$(sed -n "${SLURM_ARRAY_TASK_ID}p" "$MANIFEST")"
+if [[ -z "${FASTA_LIST}" || ! -s "${FASTA_LIST}" ]]; then
+  echo "Task ${SLURM_ARRAY_TASK_ID}: missing or empty FASTA_LIST from manifest."
   exit 1
 fi
-CHUNK_DIR="$1"; shift
-OUT_DIR="$1"; shift
-PY_SCRIPT="$1"; shift
 
-PY_ARGS=()
-if [[ $# -gt 0 ]]; then
-  if [[ "$1" == "--" ]]; then shift; fi
-  PY_ARGS=("$@")
-fi
-
-TASK_ID="${SLURM_ARRAY_TASK_ID:?SLURM_ARRAY_TASK_ID not set}"
-CHUNK_FILE="$(printf "%s/chunk%02d.list" "$CHUNK_DIR" "$TASK_ID")"
-if [[ ! -s "$CHUNK_FILE" ]]; then
-  echo "Chunk file not found or empty: $CHUNK_FILE"
-  exit 2
-fi
-
-# Env
+# Load required modules
 module load python/3.12.8-fasrc01 gcc/14.2.0-fasrc01 cuda/12.9.1-fasrc01 cudnn/9.10.2.21_cuda12-fasrc01
+
+
 source "$(conda info --base)/etc/profile.d/conda.sh"
-if command -v mamba >/dev/null 2>&1; then
-  mamba activate /n/home06/tbush/envs/esm
-else
-  conda activate /n/home06/tbush/envs/esm
-fi
 
-echo "[${SLURM_JOB_ID}_${SLURM_ARRAY_TASK_ID}] Env activated on $(hostname)"
-echo "[${SLURM_JOB_ID}_${SLURM_ARRAY_TASK_ID}] Input chunk: $CHUNK_FILE"
+# prefer prefix activation
+ES_ENV_PREFIX="${ES_ENV_PREFIX:-/n/home06/tbush/envs/esm}"
+conda activate "$ES_ENV_PREFIX"
 
-# Output layout
-DATA_DIR="${OUT_DIR}/data"
-MANIFEST_DIR="${OUT_DIR}/manifests"
-mkdir -p "$DATA_DIR" "$MANIFEST_DIR"
 
-MAX_WORKERS="${SLURM_CPUS_PER_TASK:-1}"
+echo "Task ${SLURM_ARRAY_TASK_ID}: FASTA_LIST=${FASTA_LIST}"
+echo "Output -> ${BASE_OUTPUT_DIR}"
 
-# If your weights/cache are in $HF_HOME under your home, GPU nodes see it.
-export HF_HOME="${HF_HOME:-/n/home06/tbush/hf_cache}"
+# Change to project root directory
+cd /n/home06/tbush/gfp_function_prediction
 
-# Run (use srun inside Slurm allocation)
-srun -u python "$PY_SCRIPT" \
-  --inputs "$CHUNK_FILE" \
-  --out_dir "$DATA_DIR" \
-  --max_workers "$MAX_WORKERS" \
-  --dtype fp16 \
-  --verify_existing \
-  "${PY_ARGS[@]}"
-
-# Move manifest to a unique name
-MAN_FROM="${DATA_DIR}/manifest_run.csv"
-MAN_TO="${MANIFEST_DIR}/manifest_${SLURM_JOB_ID}_${SLURM_ARRAY_TASK_ID}.csv"
-if [[ -f "$MAN_FROM" ]]; then
-  mv -f "$MAN_FROM" "$MAN_TO"
-  echo "[${SLURM_JOB_ID}_${SLURM_ARRAY_TASK_ID}] Wrote manifest: $MAN_TO"
-else
-  echo "[${SLURM_JOB_ID}_${SLURM_ARRAY_TASK_ID}] WARNING: manifest_run.csv not found in $DATA_DIR"
-fi
-
-echo "[${SLURM_JOB_ID}_${SLURM_ARRAY_TASK_ID}] Done."
+# Run the Python script
+python run_esm.py \
+    --fasta_list "$FASTA_LIST" \
+    --output_dir "$BASE_OUTPUT_DIR"
 

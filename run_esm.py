@@ -7,11 +7,6 @@ from utils.utils import load_seq_
 
 
 
-
-
-
-
-
 if __name__ == "__main__":
 
     parser = ArgumentParser()

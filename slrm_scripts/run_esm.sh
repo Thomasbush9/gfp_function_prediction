@@ -1,77 +1,87 @@
-#!/usr/bin/env bash
+#!/bin/bash
 set -euo pipefail
 
-if [[ $# -lt 5 ]]; then
-  echo "Usage: $0 DIR N OUT_DIR WORKER_SLRM PYTHON_SCRIPT [-- py-args...]"
+
+
+INPUT_DIR="${1:-}"
+N="${2:-}"
+OUTPUT_PARENT_DIR="${3:-}"
+ARRAY_MAX_CONCURRENCY="${4:-100}"
+
+
+if [[ -z "${INPUT_DIR}" || -z "${N}" || -z "${OUTPUT_PARENT_DIR}" ]]; then
+  echo "Usage: $0 INPUT_DIR N OUTPUT_PARENT_DIR"
+  exit 1
+fi
+if ! [[ "$N" =~ ^[0-9]+$ && "$N" -ge 1 ]]; then
+  echo "N must be a positive integer"
   exit 1
 fi
 
-DIR="$1"; N="$2"; OUT_DIR="$3"; WORKER="$4"; PY="$5"
-shift 5
+# Make timestamped output directory that will also hold logs + manifest
+TS="$(date +%Y%m%d_%H%M%S)"
+OUTPUT_DIR="${OUTPUT_PARENT_DIR}/chunks_${TS}"
+mkdir -p "$OUTPUT_DIR"
 
-# Optional Python args after a literal --
-PY_ARGS=()
-if [[ $# -gt 0 ]]; then
-  if [[ "$1" == "--" ]]; then shift; fi
-  PY_ARGS=("$@")
+echo "Writing chunk files to: $OUTPUT_DIR"
+
+# Collect files (absolute paths), null-safe & sorted
+mapfile -d '' -t files < <(find "$INPUT_DIR" -maxdepth 1 -type f -print0 | sort -z)
+total=${#files[@]}
+if (( total == 0 )); then
+  echo "No files found in $INPUT_DIR"
+  exit 1
 fi
 
-# Sanity checks
-[[ -d "$DIR" ]] || { echo "ERROR: DIR not found: $DIR"; exit 2; }
-[[ -f "$WORKER" ]] || { echo "ERROR: WORKER_SLRM not found: $WORKER"; exit 3; }
-[[ -f "$PY" ]] || { echo "ERROR: PYTHON_SCRIPT not found: $PY"; exit 4; }
+# Compute chunk size (ceil division)
+chunk_size=$(( (total + N - 1) / N ))
 
-# HF cache (so weights load on GPU nodes)
-export HF_HOME="${HF_HOME:-/n/home06/tbush/hf_cache}"
-echo "HF_HOME=${HF_HOME}"
+# Split into N chunks (skip empties if N > total)
+for ((i=0; i<N; i++)); do
+  start=$(( i * chunk_size ))
+  end=$(( start + chunk_size ))
+  (( end > total )) && end=$total
+  (( start >= end )) && continue  # skip empty chunk
 
-mkdir -p "$OUT_DIR" /n/home06/tbush/job_logs
+  out="${OUTPUT_DIR}/id_${i}.txt"
+  : > "$out"
+  for ((j=start; j<end; j++)); do
+    # Write absolute paths (they already are if INPUT_DIR was absolute)
+    printf '%s\n' "${files[j]}" >> "$out"
+  done
+  echo "Wrote $(wc -l < "$out") paths -> $out"
+done
 
-STAMP="$(date +%Y%m%d_%H%M%S)"
-CHUNK_DIR="${OUT_DIR}/chunks_${STAMP}"
-MASTER_LIST="${CHUNK_DIR}/master.list"
-mkdir -p "$CHUNK_DIR"
-: > "$MASTER_LIST"
+# -------- Build manifest (stable order) & submit array --------
+echo "Building manifest and submitting array..."
 
-echo "[1/4] Scanning FASTA files in: $DIR"
-find -L "$DIR" -maxdepth 1 -type f -name '*.fasta' -print > "$MASTER_LIST"
-NUM_FILES=$(wc -l < "$MASTER_LIST" | tr -d ' ')
-echo "  Found $NUM_FILES FASTA files"
-if [[ "$NUM_FILES" -eq 0 ]]; then
-  echo "No FASTA files found. Exiting."
+MANIFEST="${OUTPUT_DIR}/filelist.manifest"
+: > "$MANIFEST"
+
+# Deterministic: sort by name; include only non-empty chunk files
+while IFS= read -r -d '' f; do
+  [[ -s "$f" ]] && realpath -s "$f" >> "$MANIFEST"
+done < <(find "$OUTPUT_DIR" -maxdepth 1 -type f -name 'id_*.txt' -print0 | sort -z)
+
+NUM_TASKS=$(wc -l < "$MANIFEST")
+if (( NUM_TASKS == 0 )); then
+  echo "No non-empty id_*.txt chunk files found; nothing to submit."
   exit 0
 fi
 
-echo "[2/4] Splitting into up to $N chunks..."
-# Split into nearly equal chunks; handles N > NUM_FILES gracefully
-split -d -n r/"$N" --additional-suffix=.list "$MASTER_LIST" "${CHUNK_DIR}/chunk_"
-# Normalize names to chunk00, chunk01, ...
-i=0
-for f in "${CHUNK_DIR}"/chunk_*; do
-  mv "$f" "$(printf "%s/chunk%02d.list" "$CHUNK_DIR" "$i")"
-  ((i++))
-done
-NUM_CHUNKS=$i
-echo "  Made $NUM_CHUNKS chunks at: $CHUNK_DIR"
+echo "Submitting ${NUM_TASKS} array tasks (max concurrent: ${ARRAY_MAX_CONCURRENCY})..."
 
-if [[ "$NUM_CHUNKS" -eq 0 ]]; then
-  echo "Unexpected: split produced 0 chunks."
-  exit 5
-fi
 
-ARRAY_SPEC="0-$((NUM_CHUNKS - 1))"
-echo "[3/4] Submitting array: $ARRAY_SPEC"
-echo "  Worker: $WORKER"
-echo "  Python: $PY"
-echo "  OutDir: $OUT_DIR"
 
-# IMPORTANT: show the job id back to you
-JID=$(sbatch --parsable --array="$ARRAY_SPEC" "$WORKER" "$CHUNK_DIR" "$OUT_DIR" "$PY" -- "${PY_ARGS[@]}")
-echo "[4/4] Submitted batch job: $JID"
-echo "$JID" > "${OUT_DIR}/last_submission.txt"
+# --parsable returns just the job ID so we can print it nicely
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ARRAY_JOB_ID="$(
+  sbatch --parsable \
+    --array=1-"$NUM_TASKS"%${ARRAY_MAX_CONCURRENCY} \
+    --export=ALL,MANIFEST="$MANIFEST",BASE_OUTPUT_DIR="$OUTPUT_DIR" \
+    "${SCRIPT_DIR}/run_esm_array.slrm"
+)"
 
-echo
-echo "Monitor with:"
-echo "  squeue -j $JID"
-echo "  tail -f /n/home06/tbush/job_logs/esm_embed.${JID}_*.out  # as tasks start"
-
+echo "Submitted array job ${ARRAY_JOB_ID} with ${NUM_TASKS} tasks."
+echo "Chunks dir: $OUTPUT_DIR"
+echo "Manifest:   $MANIFEST"
