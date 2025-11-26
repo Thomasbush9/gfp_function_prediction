@@ -2,7 +2,7 @@ from esm.models.esmc import ESMC
 from esm.sdk.api import ESMProtein, LogitsConfig
 from argparse import ArgumentParser
 from pathlib import Path 
-
+import numpy as np  # local import for safe script-level use
 from utils.utils import load_seq_
 
 
@@ -32,19 +32,17 @@ if __name__ == "__main__":
         protein = ESMProtein(sequence=seq)
         protein_tensor = client.encode(protein)
         logits_output = client.logits(
-            protein_tensor, LogitsConfig(sequence=True, return_embeddings=True)
+        protein_tensor, LogitsConfig(sequence=True, return_embeddings=True)
         )
-
-        # Prepare output subdirectory by unique sequence index provided in mapping_db_seq (use the first/only entry)
-        seq_index = str(next(iter(mapping_db_seq.values())))
+        # Prepare output subdirectory using fasta filename stem as unique identifier
+        seq_index = fasta_path.stem
         fasta_output_dir = output_dir / seq_index
         fasta_output_dir.mkdir(parents=True, exist_ok=True)
 
         # Save logits and embeddings as .npy files
-        logits_np = logits_output.logits.cpu().numpy()
-        embeddings_np = logits_output.embeddings.cpu().numpy()
+        logits_np = logits_output.logits.sequence.cpu().float().numpy()
+        embeddings_np = logits_output.embeddings.cpu().float().numpy()
 
-        import numpy as np  # local import for safe script-level use
 
         np.save(fasta_output_dir / "logits.npy", logits_np)
         np.save(fasta_output_dir / "embeddings.npy", embeddings_np)

@@ -26,16 +26,16 @@ if [[ -z "${FASTA_LIST}" || ! -s "${FASTA_LIST}" ]]; then
   exit 1
 fi
 
-# Load required modules
 module load python/3.12.8-fasrc01 gcc/14.2.0-fasrc01 cuda/12.9.1-fasrc01 cudnn/9.10.2.21_cuda12-fasrc01
 
-
+# Temporarily disable unbound variable check for conda activation
+set +u
 source "$(conda info --base)/etc/profile.d/conda.sh"
 
 # prefer prefix activation
 ES_ENV_PREFIX="${ES_ENV_PREFIX:-/n/home06/tbush/envs/esm}"
 conda activate "$ES_ENV_PREFIX"
-
+set -u  # Re-enable 
 
 echo "Task ${SLURM_ARRAY_TASK_ID}: FASTA_LIST=${FASTA_LIST}"
 echo "Output -> ${BASE_OUTPUT_DIR}"
