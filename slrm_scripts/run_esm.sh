@@ -20,7 +20,7 @@ fi
 
 # Make timestamped output directory that will also hold logs + manifest
 TS="$(date +%Y%m%d_%H%M%S)"
-OUTPUT_DIR="${OUTPUT_PARENT_DIR}/chunks_${TS}"
+OUTPUT_DIR="${OUTPUT_PARENT_DIR}/esm_chunks_${TS}"
 mkdir -p "$OUTPUT_DIR"
 
 echo "Writing chunk files to: $OUTPUT_DIR"
