@@ -56,6 +56,25 @@ for ((i=0; i<N; i++)); do
   echo "Wrote $(wc -l < "$out") paths -> $out"
 done
 
+# -------- Create total_paths.txt and processed_paths.txt --------
+echo "Creating total_paths.txt and processed_paths.txt..."
+
+TOTAL_PATHS_FILE="${OUTPUT_DIR}/total_paths.txt"
+PROCESSED_PATHS_FILE="${OUTPUT_DIR}/processed_paths.txt"
+
+# Collect all paths from all chunk files into total_paths.txt, sorted
+: > "$TOTAL_PATHS_FILE"
+while IFS= read -r -d '' f; do
+  [[ -s "$f" ]] && cat "$f" >> "$TOTAL_PATHS_FILE"
+done < <(find "$OUTPUT_DIR" -maxdepth 1 -type f -name 'id_*.txt' -print0 | sort -z)
+sort -u "$TOTAL_PATHS_FILE" -o "$TOTAL_PATHS_FILE"
+
+# Create empty processed_paths.txt
+: > "$PROCESSED_PATHS_FILE"
+
+echo "Created $TOTAL_PATHS_FILE with $(wc -l < "$TOTAL_PATHS_FILE") total paths"
+echo "Created empty $PROCESSED_PATHS_FILE"
+
 # -------- Build manifest (stable order) & submit array --------
 echo "Building manifest and submitting array..."
 

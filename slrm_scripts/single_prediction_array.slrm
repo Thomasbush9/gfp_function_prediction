@@ -31,6 +31,7 @@ TASK_ID="${SLURM_ARRAY_TASK_ID:-0}"
 
 RUN_TAG="${JOB_ID}_${TASK_ID}"
 OUTPUT_DIR="${BASE_OUTPUT_DIR}/${RUN_TAG}"
+PROCESSED_PATHS_FILE="${BASE_OUTPUT_DIR}/processed_paths.txt"
 TEMP_FASTA_DIR_BASE="${OUTPUT_DIR}/temp"
 MMSEQ2_DB="/n/holylfs06/LABS/kempner_shared/Everyone/workflow/boltz/mmseq2_db"
 COLABFOLD_OUTPUT_BASE="${OUTPUT_DIR}/msa"
@@ -40,48 +41,13 @@ THREADS=${SLURM_CPUS_PER_TASK:-1}
 
 mkdir -p "$COLABFOLD_OUTPUT_BASE" "$BOLTZ_OUTPUT_BASE" "$TEMP_FASTA_DIR_BASE"
 
-# ============================================================================
-# JIT Cache Setup - Shared persistent cache + task-local TMPDIR
-# ============================================================================
+# Use SLURM_TMPDIR for temporary files (auto-cleaned by SLURM)
+export TMPDIR="${SLURM_TMPDIR:-/tmp}"
 
-# Global shared JIT cache root (persistent, survives preemption)
-JIT_CACHE_ROOT="/n/home06/tbush/boltz_jit_cache"
-# Optionally version by CUDA/driver/code if needed, e.g.:
-# JIT_CACHE_ROOT="${JIT_CACHE_ROOT}_cuda12.9_$(git rev-parse --short HEAD)"
-
-# Create shared cache directories (idempotent, safe for concurrent access)
-mkdir -p "$JIT_CACHE_ROOT"/{triton,inductor,cuda,xdg}
-
-# Task-local TMPDIR for temporary files/spills (node-local, fast)
-CACHE_BASE="${SLURM_TMPDIR:-/tmp}/boltz_cache_${USER}_${JOB_ID}_${TASK_ID}"
-
-# If this task's tmpdir exists from a previous crash/preemption, clean it
-if [ -d "$CACHE_BASE" ]; then
-    echo "Removing existing task tmpdir from previous run..."
-    rm -rf "$CACHE_BASE"
-fi
-
-# Create task-local tmpdir
-mkdir -p "$CACHE_BASE"
-export TMPDIR="$CACHE_BASE/tmp"
-mkdir -p "$TMPDIR"
-
-# Point JIT caches to shared persistent location
-export TRITON_CACHE_DIR="$JIT_CACHE_ROOT/triton"
-export TORCHINDUCTOR_CACHE_DIR="$JIT_CACHE_ROOT/inductor"
-export CUDA_CACHE_PATH="$JIT_CACHE_ROOT/cuda"
-export XDG_CACHE_HOME="$JIT_CACHE_ROOT/xdg"
-
-# Cleanup only task-local TMPDIR on exit (shared cache persists)
-cleanup_tmp() {
-    echo "Cleaning up task-local tmpdir..."
-    rm -rf "$CACHE_BASE" 2>/dev/null || true
-}
-trap cleanup_tmp EXIT TERM INT
-
-echo "Shared JIT cache root: $JIT_CACHE_ROOT"
-echo "Task-local tmpdir: $TMPDIR"
-
+# Set per-task Triton cache to avoid concurrent write conflicts
+# Each task gets its own cache directory (auto-cleaned with SLURM_TMPDIR)
+export TRITON_CACHE_DIR="${SLURM_TMPDIR:-/tmp}/triton_cache_${USER}_${JOB_ID}_${TASK_ID}"
+mkdir -p "$TRITON_CACHE_DIR"
 
 export CUDA_VISIBLE_DEVICES=0
 export NUM_GPU_DEVICES=1
@@ -141,20 +107,15 @@ while IFS= read -r INPUT_FASTA; do
     mamba activate /n/holylfs06/LABS/kempner_shared/Everyone/common_envs/miniconda3/envs/boltz
 
     boltz predict "$TEMP_FASTA" --cache "$BOLTZ_CACHE" --out_dir "$BOLTZ_OUTPUT_DIR" --devices $NUM_GPU_DEVICES --accelerator gpu --recycling_steps 10 --diffusion_samples 25
-    status=$?
-
-    if [ $status -ne 0 ]; then
-        echo "WARN: boltz predict failed once (status=$status). Retrying with same settings..."
-        sleep 2
-        boltz predict "$TEMP_FASTA" --cache "$BOLTZ_CACHE" --out_dir "$BOLTZ_OUTPUT_DIR" \
-            --devices $NUM_GPU_DEVICES --accelerator gpu --recycling_steps 10 --diffusion_samples 25
-        status=$?
-    fi
-
-    if [ $status -ne 0 ]; then
-        echo "ERROR: Boltz failed for $INPUT_FASTA"
+    
+    # Check if Boltz succeeded
+    if [ $? -ne 0 ]; then
+        echo "ERROR: Boltz prediction failed for $INPUT_FASTA"
         continue
     fi
+
+    # Append successfully processed path to processed_paths.txt
+    echo "$INPUT_FASTA" >> "$PROCESSED_PATHS_FILE"
 
 done < "$LIST_FILE"
 
