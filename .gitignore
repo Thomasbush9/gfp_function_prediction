@@ -70,3 +70,11 @@ Thumbs.db
 *.joblib
 .cache/
 __pypackages__/
+
+# MSA output files and directories
+*.a3m
+chunks_*/
+**/chunks_*/
+**/msa/
+**/seq_*/
+**/*_protein_.a3m

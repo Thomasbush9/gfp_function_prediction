@@ -1,2 +1,0 @@
-/n/home06/tbush/gfp_function_prediction/data/trial_10/34073.fasta
-/n/home06/tbush/gfp_function_prediction/data/trial_10/seq_11947.fasta
