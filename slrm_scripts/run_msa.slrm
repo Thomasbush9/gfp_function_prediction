@@ -1,0 +1,87 @@
+#!/bin/bash
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=1
+#SBATCH --cpus-per-task=16
+#SBATCH --gpus-per-node=1
+#SBATCH --mem=256GB
+#SBATCH --partition=kempner_requeue
+#SBATCH --account=kempner_bsabatini_lab
+#SBATCH --time=4:00:00
+#SBATCH --mail-type=ALL
+#SBATCH --mail-user=thomasbush52@gmail.com
+# Use array-aware log names to avoid clobbering:
+#SBATCH --output=/n/home06/tbush/job_logs/%x.%A_%a.out
+
+
+set -euo pipefail
+
+#get the list of files to process for this array:
+# Select this task's chunk file from the manifest
+: "${SLURM_ARRAY_TASK_ID:?Need SLURM_ARRAY_TASK_ID}"
+: "${MANIFEST:?Need MANIFEST exported from sbatch}"
+: "${BASE_OUTPUT_DIR:?Need BASE_OUTPUT_DIR exported from sbatch}"
+
+# get the list of files to process for this array
+LIST_FILE="$(sed -n "${SLURM_ARRAY_TASK_ID}p" "$MANIFEST")"
+if [[ -z "${LIST_FILE}" || ! -s "${LIST_FILE}" ]]; then
+  echo "Task ${SLURM_ARRAY_TASK_ID}: missing or empty LIST_FILE from manifest."
+  exit 1
+fi
+
+RUN_TAG="${JOB_ID}_${TASK_ID}"
+OUTPUT_DIR="${BASE_OUTPUT_DIR}/${RUN_TAG}"
+PROCESSED_PATHS_FILE="${BASE_OUTPUT_DIR}/processed_paths.txt"
+TEMP_FASTA_DIR_BASE="${OUTPUT_DIR}/temp"
+MMSEQ2_DB="/n/holylfs06/LABS/kempner_shared/Everyone/workflow/boltz/mmseq2_db"
+COLABFOLD_OUTPUT_BASE="${OUTPUT_DIR}/msa"
+THREADS=${SLURM_CPUS_PER_TASK:-1}
+
+mkdir -p "$COLABFOLD_OUTPUT_BASE" "$TEMP_FASTA_DIR_BASE"
+
+# Use SLURM_TMPDIR for temporary files (auto-cleaned by SLURM)
+export TMPDIR="${SLURM_TMPDIR:-/tmp}"
+
+export CUDA_VISIBLE_DEVICES=0
+export NUM_GPU_DEVICES=1
+
+
+# Load required modules
+module load python/3.12.8-fasrc01 gcc/14.2.0-fasrc01 cuda/12.9.1-fasrc01 cudnn/9.10.2.21_cuda12-fasrc01
+export PATH="/n/holylfs06/LABS/kempner_shared/Everyone/common_envs/miniconda3/envs/boltz/localcolabfold/colabfold-conda/bin:$PATH"
+export COLABFOLD_DB=/n/holylfs06/LABS/kempner_shared/Everyone/workflow/boltz/colabfold_db
+
+
+while IFS= read -r INPUT_FASTA; do
+  [[ -z "$INPUT_FASTA" ]] && continue
+
+    BASENAME=$(basename "$INPUT_FASTA" .fa)   # strip extension for naming
+    COLABFOLD_OUTPUT_DIR="${COLABFOLD_OUTPUT_BASE}/${BASENAME}"
+    BOLTZ_OUTPUT_DIR="${BOLTZ_OUTPUT_BASE}/${BASENAME}"
+    TEMP_FASTA_DIR="${TEMP_FASTA_DIR_BASE}/${BASENAME}"
+    TEMP_FASTA="${TEMP_FASTA_DIR}/${BASENAME}_prot_pipeline.fasta"
+
+    echo "==============================================="
+    echo "Processing: $INPUT_FASTA"
+    echo "Output dirs: $COLABFOLD_OUTPUT_DIR | $BOLTZ_OUTPUT_DIR"
+    echo "==============================================="
+
+    mkdir -p "$COLABFOLD_OUTPUT_DIR" "$BOLTZ_OUTPUT_DIR" "$TEMP_FASTA_DIR"
+
+    # STEP 1: ColabFold search
+    colabfold_search "$INPUT_FASTA" "$MMSEQ2_DB" "$COLABFOLD_OUTPUT_DIR" --thread "$THREADS" --gpu 1
+    if [ $? -ne 0 ]; then
+        echo "ERROR: ColabFold search failed for $INPUT_FASTA"
+        continue
+    fi
+
+    # STEP 2: Find a3m file
+    HEADER=$(head -n1 "$INPUT_FASTA")
+    PROTEIN_PREFIX=$(echo "$HEADER" | sed 's/^>//' | sed 's/|/_/g')
+    A3M_FILE="${COLABFOLD_OUTPUT_DIR}/${PROTEIN_PREFIX}.a3m"
+    if [ ! -f "$A3M_FILE" ]; then
+        A3M_FILE=$(find "$COLABFOLD_OUTPUT_DIR" -name "*.a3m" | head -n1)
+        if [ -z "$A3M_FILE" ]; then
+            echo "No a3m found for $INPUT_FASTA"
+            continue
+        fi
+    fi
