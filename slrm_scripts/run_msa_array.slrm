@@ -1,9 +1,9 @@
 #!/bin/bash
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --cpus-per-task=16
+#SBATCH --cpus-per-task=4
 #SBATCH --gpus-per-node=1
-#SBATCH --mem=128GB
+#SBATCH --mem=32GB
 #SBATCH --partition=kempner_requeue
 #SBATCH --account=kempner_bsabatini_lab
 #SBATCH --time=2:00:00

@@ -3,6 +3,7 @@ set -euo pipefail
 
 # Usage: ./process_msa_fasta.sh ORIGINAL_FASTA_DIR OUTPUT_DIR
 # Example: ./process_msa_fasta.sh /data/fasta /data/chunks_20240101_120000
+# Converts .fasta files to .yaml format with MSA paths
 
 ORIGINAL_FASTA_DIR="${1:-}"
 OUTPUT_DIR="${2:-}"
@@ -11,6 +12,7 @@ if [[ -z "${ORIGINAL_FASTA_DIR}" || -z "${OUTPUT_DIR}" ]]; then
   echo "Usage: $0 ORIGINAL_FASTA_DIR OUTPUT_DIR"
   echo "  ORIGINAL_FASTA_DIR: Directory containing original .fasta files"
   echo "  OUTPUT_DIR: Directory containing sequence folders (seqnumber/msa/)"
+  echo "  Output: Creates .yaml files in OUTPUT_DIR/seqnumber/"
   exit 1
 fi
 
@@ -42,22 +44,36 @@ while IFS= read -r -d '' INPUT_FASTA; do
     continue
   fi
 
-  A3M_ABSOLUTE=$(realpath "$A3M_FILE")
-  OUTPUT_FASTA="${SEQ_DIR}/${BASENAME}"
+  # Get relative path to a3m file from sequence directory
+  A3M_RELATIVE="./msa/$(basename "$A3M_FILE")"
+  OUTPUT_YAML="${SEQ_DIR}/${BASENAME_NOEXT}.yaml"
 
   # Read original header and sequence
   ORIGINAL_HEADER=$(head -n1 "$INPUT_FASTA")
   SEQUENCE=$(tail -n+2 "$INPUT_FASTA" | tr -d '\n')
 
-  # Append a3m path to header (format: >original_header|/path/to/msa.a3m)
-  NEW_HEADER="${ORIGINAL_HEADER}|${A3M_ABSOLUTE}"
+  # Extract ID from header (remove '>' and take first field, or use basename)
+  PROTEIN_ID="${ORIGINAL_HEADER#>}"
+  PROTEIN_ID="${PROTEIN_ID%% *}"
+  PROTEIN_ID="${PROTEIN_ID%%|*}"
+  if [[ -z "$PROTEIN_ID" ]]; then
+    PROTEIN_ID="$BASENAME_NOEXT"
+  fi
 
-  # Write new fasta file in the sequence directory
-  echo "$NEW_HEADER" > "$OUTPUT_FASTA"
-  echo "$SEQUENCE" >> "$OUTPUT_FASTA"
+  # Write YAML file
+  {
+    echo "version: 1"
+    echo ""
+    echo "sequences:"
+    echo "  - protein:"
+    echo "      id: $PROTEIN_ID"
+    echo "      sequence: $SEQUENCE"
+    echo "      msa: $A3M_RELATIVE"
+  } > "$OUTPUT_YAML"
 
-  echo "Processed: $BASENAME -> $OUTPUT_FASTA"
-  echo "  MSA: $A3M_ABSOLUTE"
+  echo "Processed: $BASENAME -> $OUTPUT_YAML"
+  echo "  ID: $PROTEIN_ID"
+  echo "  MSA: $A3M_RELATIVE"
   ((PROCESSED_COUNT++)) || true
 
 done < <(find "$ORIGINAL_FASTA_DIR" -maxdepth 1 -type f \( -name "*.fasta" -o -name "*.fa" \) -print0)
