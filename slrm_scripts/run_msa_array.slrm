@@ -3,7 +3,7 @@
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=4
 #SBATCH --gpus-per-node=1
-#SBATCH --mem=32GB
+#SBATCH --mem=64GB
 #SBATCH --partition=kempner_requeue
 #SBATCH --account=kempner_bsabatini_lab
 #SBATCH --time=2:00:00
@@ -187,5 +187,61 @@ echo "==============================================="
 echo "[$(date +%H:%M:%S)] Batch processing complete"
 echo "  Processed: ${PROCESSED_COUNT}/${NUM_FILES} sequences"
 echo "==============================================="
+
+# STEP 3: Run post-processing (convert FASTA to YAML) once after all MSA tasks complete
+# Use a lock file to ensure only one task runs this
+POST_PROCESS_LOCK="${BASE_OUTPUT_DIR}/post_process.lock"
+POST_PROCESS_DONE="${BASE_OUTPUT_DIR}/post_process.done"
+
+if [[ ! -f "$POST_PROCESS_DONE" ]]; then
+  # Try to acquire lock (non-blocking)
+  if (set -C; echo $$ > "$POST_PROCESS_LOCK") 2>/dev/null; then
+    echo "[$(date +%H:%M:%S)] Task ${SLURM_ARRAY_TASK_ID} acquired lock for post-processing"
+    
+    # Wait a bit to ensure all other tasks have finished writing their outputs
+    sleep 5
+    
+    # Check if we still have the lock (another task might have taken over)
+    if [[ -f "$POST_PROCESS_LOCK" ]] && [[ "$(cat "$POST_PROCESS_LOCK")" == "$$" ]]; then
+      # Use exported SCRIPT_DIR or fallback to computing it
+      SCRIPT_DIR="${SCRIPT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
+      PROCESS_SCRIPT="${SCRIPT_DIR}/process_msa_fasta.sh"
+      ORIGINAL_FASTA_DIR="${ORIGINAL_FASTA_DIR:-}"
+      
+      echo "[$(date +%H:%M:%S)] Post-processing check:"
+      echo "  SCRIPT_DIR: ${SCRIPT_DIR}"
+      echo "  PROCESS_SCRIPT: ${PROCESS_SCRIPT}"
+      echo "  ORIGINAL_FASTA_DIR: ${ORIGINAL_FASTA_DIR}"
+      echo "  PROCESS_SCRIPT exists: $([ -f "$PROCESS_SCRIPT" ] && echo 'YES' || echo 'NO')"
+      
+      if [[ -n "$ORIGINAL_FASTA_DIR" && -f "$PROCESS_SCRIPT" ]]; then
+        echo "[$(date +%H:%M:%S)] Running post-processing: converting FASTA to YAML..."
+        echo "  Original FASTA dir: $ORIGINAL_FASTA_DIR"
+        echo "  Output dir: $BASE_OUTPUT_DIR"
+        
+        if "$PROCESS_SCRIPT" "$ORIGINAL_FASTA_DIR" "$BASE_OUTPUT_DIR"; then
+          touch "$POST_PROCESS_DONE"
+          echo "[$(date +%H:%M:%S)] Post-processing completed successfully"
+        else
+          echo "ERROR: Post-processing failed" >&2
+        fi
+      else
+        echo "WARNING: ORIGINAL_FASTA_DIR not set or process script not found, skipping post-processing"
+        echo "  ORIGINAL_FASTA_DIR empty: $([ -z "$ORIGINAL_FASTA_DIR" ] && echo 'YES' || echo 'NO')"
+        echo "  PROCESS_SCRIPT exists: $([ -f "$PROCESS_SCRIPT" ] && echo 'YES' || echo 'NO')"
+        touch "$POST_PROCESS_DONE"  # Mark as done to avoid retries
+      fi
+      
+      # Release lock
+      rm -f "$POST_PROCESS_LOCK"
+    else
+      echo "[$(date +%H:%M:%S)] Task ${SLURM_ARRAY_TASK_ID} lost lock, another task is handling post-processing"
+    fi
+  else
+    echo "[$(date +%H:%M:%S)] Task ${SLURM_ARRAY_TASK_ID} could not acquire lock, another task is handling post-processing"
+  fi
+else
+  echo "[$(date +%H:%M:%S)] Post-processing already completed (skipping)"
+fi
 
 

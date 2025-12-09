@@ -1,0 +1,38 @@
+#!/bin/bash
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=1
+#SBATCH --cpus-per-task=1
+#SBATCH --gpus-per-node=1
+#SBATCH --mem=4GB
+#SBATCH --partition=kempner_requeue
+#SBATCH --account=kempner_bsabatini_lab
+#SBATCH --time=0:10:00
+#SBATCH --output=/n/home06/tbush/job_logs/%x.%j.out
+
+set -euo pipefail
+
+: "${OUTPUT_DIR:?Need OUTPUT_DIR}"
+: "${MAX_FILES_PER_JOB:?Need MAX_FILES_PER_JOB}"
+: "${ARRAY_MAX_CONCURRENCY:=100}"
+: "${SCRIPT_DIR:?Need SCRIPT_DIR}"
+
+echo "DEBUG: SCRIPT_DIR=${SCRIPT_DIR}"
+BOLTZ_SCRIPT="${SCRIPT_DIR}/split_and_run_boltz.sh"
+echo "DEBUG: Looking for boltz script at: $BOLTZ_SCRIPT"
+
+if [[ ! -f "$BOLTZ_SCRIPT" ]]; then
+  echo "ERROR: split_and_run_boltz.sh not found at $BOLTZ_SCRIPT"
+  echo "DEBUG: SCRIPT_DIR contents: $(ls -la "$SCRIPT_DIR" 2>&1 || echo 'Cannot list SCRIPT_DIR')"
+  exit 1
+fi
+
+echo "==============================================="
+echo "Launching boltz array job"
+echo "  Output dir: $OUTPUT_DIR"
+echo "  Max files per job: $MAX_FILES_PER_JOB"
+echo "==============================================="
+
+"$BOLTZ_SCRIPT" "$OUTPUT_DIR" "$MAX_FILES_PER_JOB" "$ARRAY_MAX_CONCURRENCY"
+
+
+

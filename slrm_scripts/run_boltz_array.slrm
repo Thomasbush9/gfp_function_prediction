@@ -28,10 +28,13 @@ fi
 JOB_ID="${SLURM_ARRAY_JOB_ID:-${SLURM_JOB_ID:-manual}}"
 TASK_ID="${SLURM_ARRAY_TASK_ID:-0}"
 
+# Extract chunk number from CHUNK_DIR name (e.g., chunk_0 -> 0) to maintain consistency
+CHUNK_NUM=$(basename "$CHUNK_DIR" | sed 's/chunk_//')
+
 PROCESSED_PATHS_FILE="${BASE_OUTPUT_DIR}/processed_paths.txt"
 TOT_FILES_BOLTZ="${BASE_OUTPUT_DIR}/tot_filesboltz.txt"
 BOLTZ_CACHE="/n/holylfs06/LABS/kempner_shared/Everyone/workflow/boltz/boltz_db"
-BOLTZ_OUTPUT_DIR="${BASE_OUTPUT_DIR}/boltz_output/chunk_${TASK_ID}"
+BOLTZ_OUTPUT_DIR="${BASE_OUTPUT_DIR}/boltz_output/chunk_${CHUNK_NUM}"
 
 mkdir -p "$BOLTZ_OUTPUT_DIR"
 

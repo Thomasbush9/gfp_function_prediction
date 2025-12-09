@@ -104,10 +104,11 @@ if [[ ! -f "$MSA_SCRIPT" ]]; then
 fi
 
 # --parsable returns just the job ID so we can print it nicely
+# Export ORIGINAL_FASTA_DIR and SCRIPT_DIR so post-processing can access them
 ARRAY_JOB_ID="$(
   sbatch --parsable \
     --array=1-"$NUM_TASKS"%${ARRAY_MAX_CONCURRENCY} \
-    --export=ALL,MANIFEST="$MANIFEST",BASE_OUTPUT_DIR="$OUTPUT_DIR" \
+    --export=ALL,MANIFEST="$MANIFEST",BASE_OUTPUT_DIR="$OUTPUT_DIR",ORIGINAL_FASTA_DIR="$INPUT_DIR",SCRIPT_DIR="$SCRIPT_DIR" \
     "$MSA_SCRIPT"
 )"
 
