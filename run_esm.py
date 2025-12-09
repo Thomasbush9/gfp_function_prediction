@@ -22,30 +22,30 @@ if __name__ == "__main__":
 
     # Read fasta paths from .txt file
     with open(args.fasta_list, "r") as f:
-        fasta_paths = [line.strip() for line in f if line.strip()]
+        yaml_paths = [line.strip() for line in f if line.strip()]
 
     client = ESMC.from_pretrained("esmc_300m").to("cuda")
 
-    for fasta_path_str in fasta_paths:
-        fasta_path = Path(fasta_path_str)
-        seq, mapping_db_seq = load_seq_(fasta_path)
+    for yaml_path_str in yaml_paths:
+        yaml_path = Path(yaml_path_str)
+        seq, mapping_db_seq = load_seq_(yaml_path, fasta=False)
         protein = ESMProtein(sequence=seq)
         protein_tensor = client.encode(protein)
         logits_output = client.logits(
         protein_tensor, LogitsConfig(sequence=True, return_embeddings=True)
         )
         # Prepare output subdirectory using fasta filename stem as unique identifier
-        seq_index = fasta_path.stem
-        fasta_output_dir = output_dir / seq_index
-        fasta_output_dir.mkdir(parents=True, exist_ok=True)
+        seq_index = yaml_path.stem
+        yaml_output_dir = output_dir / seq_index
+        yaml_output_dir.mkdir(parents=True, exist_ok=True)
 
         # Save logits and embeddings as .npy files
         logits_np = logits_output.logits.sequence.cpu().float().numpy()
         embeddings_np = logits_output.embeddings.cpu().float().numpy()
 
 
-        np.save(fasta_output_dir / "logits.npy", logits_np)
-        np.save(fasta_output_dir / "embeddings.npy", embeddings_np)
+        np.save(yaml_output_dir / "logits.npy", logits_np)
+        np.save(yaml_output_dir / "embeddings.npy", embeddings_np)
 
 
 

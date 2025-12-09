@@ -128,4 +128,23 @@ echo "Chunks dir: $CHUNKS_DIR"
 echo "Manifest:   $MANIFEST"
 echo "Total files: $(wc -l < "$TOT_FILES_BOLTZ")"
 
+# Submit post-processing job to organize outputs after array job completes
+ORGANIZE_SCRIPT="${SCRIPT_DIR}/run_boltz_organize.slrm"
+if [[ -f "$ORGANIZE_SCRIPT" ]]; then
+  echo ""
+  echo "Submitting post-processing job to organize boltz outputs..."
+  ORGANIZE_JOB_ID=$(sbatch --parsable \
+    --dependency=afterok:${ARRAY_JOB_ID} \
+    --export=ALL,BASE_OUTPUT_DIR="$OUTPUT_DIR",BOLTZ_CHUNKS_DIR="$CHUNKS_DIR",SCRIPT_DIR="$SCRIPT_DIR" \
+    "$ORGANIZE_SCRIPT")
+  
+  if [[ -n "$ORGANIZE_JOB_ID" ]]; then
+    echo "Submitted organize job ${ORGANIZE_JOB_ID} (depends on array job ${ARRAY_JOB_ID})"
+  else
+    echo "WARNING: Failed to submit organize job"
+  fi
+else
+  echo "WARNING: Organize script not found at $ORGANIZE_SCRIPT, skipping post-processing"
+fi
+
 

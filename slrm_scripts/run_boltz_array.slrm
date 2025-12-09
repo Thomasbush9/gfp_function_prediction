@@ -73,7 +73,7 @@ mamba activate /n/holylfs06/LABS/kempner_shared/Everyone/common_envs/miniconda3/
 
 # Run boltz predict on the chunk directory
 echo "[$(date +%H:%M:%S)] Running boltz predict on chunk directory..."
-if ! boltz predict "$CHUNK_DIR" --cache "$BOLTZ_CACHE" --out_dir "$BOLTZ_OUTPUT_DIR" --devices $NUM_GPU_DEVICES --accelerator gpu --recycling_steps 10 --diffusion_samples 25; then
+if ! boltz predict "$CHUNK_DIR" --cache "$BOLTZ_CACHE" --out_dir "$BOLTZ_OUTPUT_DIR" --devices $NUM_GPU_DEVICES --accelerator gpu --recycling_steps 8 --diffusion_samples 10 --override; then
   echo "ERROR: Boltz prediction failed for chunk directory $CHUNK_DIR"
   exit 1
 fi
