@@ -1,28 +1,67 @@
 #!/bin/bash
 set -euo pipefail
 
-# Usage: ./run_msa_then_boltz.sh INPUT_DIR N OUTPUT_PARENT_DIR MAX_FILES_PER_JOB ESM_N [ARRAY_MAX_CONCURRENCY]
-# Example: ./run_msa_then_boltz.sh /data/fasta 5 /data/jobs 10 5 100
+# Usage: ./run_msa_then_boltz.sh [CONFIG_FILE]
+# Example: ./run_msa_then_boltz.sh pipeline_config.yaml
+#          ./run_msa_then_boltz.sh  (uses pipeline_config.yaml in script directory)
 
-INPUT_DIR="${1:-}"
-N="${2:-}"
-OUTPUT_PARENT_DIR="${3:-}"
-MAX_FILES_PER_JOB="${4:-}"
-ESM_N="${5:-}"
-ARRAY_MAX_CONCURRENCY="${6:-100}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CONFIG_FILE="${1:-${SCRIPT_DIR}/pipeline_config.yaml}"
 
-if [[ -z "${INPUT_DIR}" || -z "${N}" || -z "${OUTPUT_PARENT_DIR}" || -z "${MAX_FILES_PER_JOB}" || -z "${ESM_N}" ]]; then
-  echo "Usage: $0 INPUT_DIR N OUTPUT_PARENT_DIR MAX_FILES_PER_JOB ESM_N [ARRAY_MAX_CONCURRENCY]"
-  echo "  INPUT_DIR: Directory containing original .fasta files"
-  echo "  N: Number of chunks for MSA generation"
-  echo "  OUTPUT_PARENT_DIR: Parent directory for output"
-  echo "  MAX_FILES_PER_JOB: Maximum number of .yaml files per boltz array job"
-  echo "  ESM_N: Number of chunks for ESM embeddings generation"
-  echo "  ARRAY_MAX_CONCURRENCY: Maximum concurrent array tasks (default: 100)"
+# Check if config file exists
+if [[ ! -f "$CONFIG_FILE" ]]; then
+  echo "ERROR: Config file not found: $CONFIG_FILE"
+  echo ""
+  echo "Usage: $0 [CONFIG_FILE]"
+  echo "  CONFIG_FILE: Path to YAML configuration file (default: pipeline_config.yaml)"
+  echo ""
+  echo "Example config file: ${SCRIPT_DIR}/pipeline_config.example.yaml"
   exit 1
 fi
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Parse config file using Python
+PARSE_SCRIPT="${SCRIPT_DIR}/parse_config.py"
+
+# Function to get config value
+get_config() {
+  local key="$1"
+  python3 "$PARSE_SCRIPT" "$CONFIG_FILE" "$key" 2>/dev/null || echo ""
+}
+
+# Read configuration values
+INPUT_DIR=$(get_config "input.fasta_dir")
+OUTPUT_PARENT_DIR=$(get_config "output.parent_dir")
+N=$(get_config "msa.num_chunks")
+MSA_ARRAY_MAX_CONCURRENCY=$(get_config "msa.array_max_concurrency")
+MAX_FILES_PER_JOB=$(get_config "boltz.max_files_per_job")
+BOLTZ_ARRAY_MAX_CONCURRENCY=$(get_config "boltz.array_max_concurrency")
+ESM_N=$(get_config "esm.num_chunks")
+ESM_ARRAY_MAX_CONCURRENCY=$(get_config "esm.array_max_concurrency")
+
+# Set defaults
+ARRAY_MAX_CONCURRENCY="${MSA_ARRAY_MAX_CONCURRENCY:-100}"
+BOLTZ_ARRAY_MAX_CONCURRENCY="${BOLTZ_ARRAY_MAX_CONCURRENCY:-${ARRAY_MAX_CONCURRENCY}}"
+ESM_ARRAY_MAX_CONCURRENCY="${ESM_ARRAY_MAX_CONCURRENCY:-${ARRAY_MAX_CONCURRENCY}}"
+
+# Validate required parameters
+MISSING_PARAMS=()
+[[ -z "$INPUT_DIR" ]] && MISSING_PARAMS+=("input.fasta_dir")
+[[ -z "$OUTPUT_PARENT_DIR" ]] && MISSING_PARAMS+=("output.parent_dir")
+[[ -z "$N" ]] && MISSING_PARAMS+=("msa.num_chunks")
+[[ -z "$MAX_FILES_PER_JOB" ]] && MISSING_PARAMS+=("boltz.max_files_per_job")
+[[ -z "$ESM_N" ]] && MISSING_PARAMS+=("esm.num_chunks")
+
+if (( ${#MISSING_PARAMS[@]} > 0 )); then
+  echo "ERROR: Missing required parameters in config file:"
+  for param in "${MISSING_PARAMS[@]}"; do
+    echo "  - $param"
+  done
+  echo ""
+  echo "Config file: $CONFIG_FILE"
+  echo "Example config: ${SCRIPT_DIR}/pipeline_config.example.yaml"
+  exit 1
+fi
+
 MSA_SCRIPT="${SCRIPT_DIR}/split_and_run_msa.sh"
 POST_PROCESS_SCRIPT="${SCRIPT_DIR}/post_process_msa.slrm"
 BOLTZ_SCRIPT="${SCRIPT_DIR}/split_and_run_boltz.sh"
@@ -41,7 +80,7 @@ echo ""
 
 # Step 1: Launch MSA array job
 echo "Step 1: Launching MSA generation..."
-MSA_JOB_OUTPUT=$("$MSA_SCRIPT" "$INPUT_DIR" "$N" "$OUTPUT_PARENT_DIR" "$ARRAY_MAX_CONCURRENCY")
+MSA_JOB_OUTPUT=$("$MSA_SCRIPT" "$INPUT_DIR" "$N" "$OUTPUT_PARENT_DIR" "$MSA_ARRAY_MAX_CONCURRENCY")
 
 # Extract MSA job ID and output directory from the output
 MSA_JOB_ID=$(echo "$MSA_JOB_OUTPUT" | grep -oP 'Submitted array job \K[0-9]+' || echo "")
@@ -71,7 +110,7 @@ fi
 
 ESM_WRAPPER_JOB_ID=$(sbatch --parsable \
   --dependency=afterok:${MSA_JOB_ID} \
-  --export=ALL,OUTPUT_DIR="$OUTPUT_DIR",N="$ESM_N",ARRAY_MAX_CONCURRENCY="$ARRAY_MAX_CONCURRENCY",SCRIPT_DIR="$SCRIPT_DIR" \
+  --export=ALL,OUTPUT_DIR="$OUTPUT_DIR",N="$ESM_N",ARRAY_MAX_CONCURRENCY="$ESM_ARRAY_MAX_CONCURRENCY",SCRIPT_DIR="$SCRIPT_DIR" \
   "$ESM_WRAPPER")
 
 ESM_JOB_ID="$ESM_WRAPPER_JOB_ID"
@@ -95,7 +134,7 @@ fi
 # Export SCRIPT_DIR so wrapper can find split_and_run_boltz.sh
 BOLTZ_WRAPPER_JOB_ID=$(sbatch --parsable \
   --dependency=afterok:${MSA_JOB_ID} \
-  --export=ALL,OUTPUT_DIR="$OUTPUT_DIR",MAX_FILES_PER_JOB="$MAX_FILES_PER_JOB",ARRAY_MAX_CONCURRENCY="$ARRAY_MAX_CONCURRENCY",SCRIPT_DIR="$SCRIPT_DIR" \
+  --export=ALL,OUTPUT_DIR="$OUTPUT_DIR",MAX_FILES_PER_JOB="$MAX_FILES_PER_JOB",ARRAY_MAX_CONCURRENCY="$BOLTZ_ARRAY_MAX_CONCURRENCY",SCRIPT_DIR="$SCRIPT_DIR" \
   "$BOLTZ_WRAPPER")
 
 # Note: The actual boltz array job ID will be submitted by the wrapper script
