@@ -19,16 +19,16 @@ def load_dataset(path: str, sep: None) -> pd.DataFrame:
 #         seq = "".join([s.strip("\n") for s in file[1:]])
 #         mapping_db_seq = {str(i): i + 1 for i in range(len(seq))}
 #         return seq, mapping_db_seq
-def load_seq_(path: str, return_meta: bool = False):
+def load_seq_(path: str, return_meta: bool = False, fasta: bool = True):
     """
-    Load a single-entry FASTA/A3M file.
+    Load a single-entry FASTA/A3M or YAML protein file.
 
     Parameters
     ----------
     path : str
-        Path to the FASTA/A3M file.
+        Path to the FASTA/A3M or YAML file.
     return_meta : bool, optional
-        If True, also return a dict with 'type', 'idx', 'path', and 'header'.
+        If True, also return a dict with 'type', 'idx', 'path', and 'header' (for FASTA).
 
     Returns
     -------
@@ -37,30 +37,36 @@ def load_seq_(path: str, return_meta: bool = False):
     mapping_db_seq : dict
         Maps sequence position (as str) to 1-based index.
     meta : dict, optional
-        Returned only if return_meta=True.
+        Returned only if return_meta=True and input is FASTA/A3M.
     """
-    with open(path, "r") as f:
-        lines = [ln.strip() for ln in f if ln.strip()]
-
-    if not lines or not lines[0].startswith(">"):
-        raise ValueError(
-            f"File {path} does not look like a FASTA/A3M with a header on the first line."
-        )
-
-    header = lines[0]
-    seq = "".join(lines[1:])
-
-    mapping_db_seq = {str(i): i + 1 for i in range(len(seq))}
-
-    if return_meta:
-        header_body = header[1:]  # remove ">"
-        parts = header_body.split("|", maxsplit=2)
-        seq_type, idx, msa_path = (parts + [None, None, None])[:3]
-
-        meta = {"type": seq_type, "idx": idx, "path": msa_path, "header": header}
-        return seq, mapping_db_seq, meta
-
-    return seq, mapping_db_seq
+    open_args = {"mode": "r"}
+    if not fasta:
+        # YAML: open, load, extract sequence
+        with open(path, **open_args) as f:
+            data = yaml.safe_load(f)
+            seq = data["sequences"][0]["protein"]["sequence"]
+        mapping_db_seq = {str(i): i + 1 for i in range(len(seq))}
+        # For YAML no meta info is available/meaningful for return_meta,
+        # so just return two outputs regardless of return_meta
+        return seq, mapping_db_seq
+    else:
+        # FASTA/A3M: open, parse header and sequence lines
+        with open(path, **open_args) as f:
+            lines = [ln.strip() for ln in f if ln.strip()]
+        if not lines or not lines[0].startswith(">"):
+            raise ValueError(
+                f"File {path} does not look like a FASTA/A3M with a header on the first line."
+            )
+        header = lines[0]
+        seq = "".join(lines[1:])
+        mapping_db_seq = {str(i): i + 1 for i in range(len(seq))}
+        if return_meta:
+            header_body = header[1:]  # remove ">"
+            parts = header_body.split("|", maxsplit=2)
+            seq_type, idx, msa_path = (parts + [None, None, None])[:3]
+            meta = {"type": seq_type, "idx": idx, "path": msa_path, "header": header}
+            return seq, mapping_db_seq, meta
+        return seq, mapping_db_seq
 
 
 def parse_mutation(mutation_str: str):
