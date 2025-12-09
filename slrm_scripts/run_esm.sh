@@ -3,14 +3,17 @@ set -euo pipefail
 
 
 
-INPUT_DIR="${1:-}"
+OUTPUT_DIR="${1:-}"
 N="${2:-}"
 OUTPUT_PARENT_DIR="${3:-}"
 ARRAY_MAX_CONCURRENCY="${4:-100}"
 
-
-if [[ -z "${INPUT_DIR}" || -z "${N}" || -z "${OUTPUT_PARENT_DIR}" ]]; then
-  echo "Usage: $0 INPUT_DIR N OUTPUT_PARENT_DIR"
+if [[ -z "${OUTPUT_DIR}" || -z "${N}" || -z "${OUTPUT_PARENT_DIR}" ]]; then
+  echo "Usage: $0 OUTPUT_DIR N OUTPUT_PARENT_DIR [ARRAY_MAX_CONCURRENCY]"
+  echo "  OUTPUT_DIR: Directory containing .yaml files (recursively searched)"
+  echo "  N: Number of chunks for ESM processing"
+  echo "  OUTPUT_PARENT_DIR: Parent directory for ESM chunk output"
+  echo "  ARRAY_MAX_CONCURRENCY: Maximum concurrent array tasks (default: 100)"
   exit 1
 fi
 if ! [[ "$N" =~ ^[0-9]+$ && "$N" -ge 1 ]]; then
@@ -18,20 +21,27 @@ if ! [[ "$N" =~ ^[0-9]+$ && "$N" -ge 1 ]]; then
   exit 1
 fi
 
+# Normalize to absolute path
+OUTPUT_DIR="$(realpath -m "$OUTPUT_DIR")"
+
 # Make timestamped output directory that will also hold logs + manifest
 TS="$(date +%Y%m%d_%H%M%S)"
-OUTPUT_DIR="${OUTPUT_PARENT_DIR}/esm_chunks_${TS}"
-mkdir -p "$OUTPUT_DIR"
+ESM_CHUNKS_DIR="${OUTPUT_PARENT_DIR}/esm_chunks_${TS}"
+mkdir -p "$ESM_CHUNKS_DIR"
 
-echo "Writing chunk files to: $OUTPUT_DIR"
+echo "Finding .yaml files in: $OUTPUT_DIR"
+echo "Chunk files will be created in: $ESM_CHUNKS_DIR"
 
-# Collect files (absolute paths), null-safe & sorted
-mapfile -d '' -t files < <(find "$INPUT_DIR" -maxdepth 1 -type f -print0 | sort -z)
-total=${#files[@]}
+# Recursively collect all .yaml files (absolute paths), null-safe & sorted
+mapfile -d '' -t yaml_files < <(find "$OUTPUT_DIR" -type f -name "*.yaml" -print0 | sort -z)
+total=${#yaml_files[@]}
+
 if (( total == 0 )); then
-  echo "No files found in $INPUT_DIR"
+  echo "No .yaml files found in $OUTPUT_DIR"
   exit 1
 fi
+
+echo "Found ${total} .yaml files"
 
 # Compute chunk size (ceil division)
 chunk_size=$(( (total + N - 1) / N ))
@@ -43,11 +53,11 @@ for ((i=0; i<N; i++)); do
   (( end > total )) && end=$total
   (( start >= end )) && continue  # skip empty chunk
 
-  out="${OUTPUT_DIR}/id_${i}.txt"
+  out="${ESM_CHUNKS_DIR}/id_${i}.txt"
   : > "$out"
   for ((j=start; j<end; j++)); do
-    # Write absolute paths (they already are if INPUT_DIR was absolute)
-    printf '%s\n' "${files[j]}" >> "$out"
+    # Write absolute paths to yaml files
+    printf '%s\n' "${yaml_files[j]}" >> "$out"
   done
   echo "Wrote $(wc -l < "$out") paths -> $out"
 done
@@ -55,13 +65,13 @@ done
 # -------- Build manifest (stable order) & submit array --------
 echo "Building manifest and submitting array..."
 
-MANIFEST="${OUTPUT_DIR}/filelist.manifest"
+MANIFEST="${ESM_CHUNKS_DIR}/filelist.manifest"
 : > "$MANIFEST"
 
 # Deterministic: sort by name; include only non-empty chunk files
 while IFS= read -r -d '' f; do
   [[ -s "$f" ]] && realpath -s "$f" >> "$MANIFEST"
-done < <(find "$OUTPUT_DIR" -maxdepth 1 -type f -name 'id_*.txt' -print0 | sort -z)
+done < <(find "$ESM_CHUNKS_DIR" -maxdepth 1 -type f -name 'id_*.txt' -print0 | sort -z)
 
 NUM_TASKS=$(wc -l < "$MANIFEST")
 if (( NUM_TASKS == 0 )); then
@@ -71,9 +81,8 @@ fi
 
 echo "Submitting ${NUM_TASKS} array tasks (max concurrent: ${ARRAY_MAX_CONCURRENCY})..."
 
-
-
 # --parsable returns just the job ID so we can print it nicely
+# Use OUTPUT_DIR as BASE_OUTPUT_DIR so ESM outputs go to same structure as YAML files
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ARRAY_JOB_ID="$(
   sbatch --parsable \
@@ -83,5 +92,5 @@ ARRAY_JOB_ID="$(
 )"
 
 echo "Submitted array job ${ARRAY_JOB_ID} with ${NUM_TASKS} tasks."
-echo "Chunks dir: $OUTPUT_DIR"
+echo "Chunks dir: $ESM_CHUNKS_DIR"
 echo "Manifest:   $MANIFEST"
