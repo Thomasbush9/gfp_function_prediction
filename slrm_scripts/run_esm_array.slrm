@@ -46,5 +46,6 @@ cd /n/home06/tbush/gfp_function_prediction
 # Run the Python script
 python run_esm.py \
     --fasta_list "$FASTA_LIST" \
-    --output_dir "$BASE_OUTPUT_DIR"
+    --output_dir "$BASE_OUTPUT_DIR" \
+    --processed_paths_file "${ESM_CHUNKS_DIR}/processed_paths.txt"
 

@@ -78,6 +78,13 @@ if (( NUM_TASKS == 0 )); then
   echo "No non-empty id_*.txt chunk files found; nothing to submit."
   exit 0
 fi
+# write all the paths into total_paths.txt in the output directory
+touch "${ESM_CHUNKS_DIR}/total_paths.txt"
+for file in "${yaml_files[@]}"; do
+  echo "$file" >> "${ESM_CHUNKS_DIR}/total_paths.txt"
+done
+# create a processed_paths.txt file in the output directory
+touch "${ESM_CHUNKS_DIR}/processed_paths.txt"
 
 echo "Submitting ${NUM_TASKS} array tasks (max concurrent: ${ARRAY_MAX_CONCURRENCY})..."
 
@@ -87,7 +94,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ARRAY_JOB_ID="$(
   sbatch --parsable \
     --array=1-"$NUM_TASKS"%${ARRAY_MAX_CONCURRENCY} \
-    --export=ALL,MANIFEST="$MANIFEST",BASE_OUTPUT_DIR="$OUTPUT_DIR" \
+    --export=ALL,MANIFEST="$MANIFEST",BASE_OUTPUT_DIR="$OUTPUT_DIR",ESM_CHUNKS_DIR="$ESM_CHUNKS_DIR" \
     "${SCRIPT_DIR}/run_esm_array.slrm"
 )"
 
