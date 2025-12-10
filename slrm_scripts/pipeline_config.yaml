@@ -1,0 +1,22 @@
+input:
+  fasta_dir: /n/home06/tbush/gfp_function_prediction/data/20250815_102358_subsample/subsample
+
+# Output parent directory where all results will be stored
+output:
+  parent_dir: /n/home06/tbush/outputs
+
+# MSA (Multiple Sequence Alignment) generation settings
+msa:
+  num_chunks: 10                    # Number of chunks for MSA array job
+  array_max_concurrency: 5       # Maximum concurrent MSA array tasks
+
+# Boltz structure prediction settings
+boltz:
+  max_files_per_job: 10            # Maximum number of .yaml files per boltz array job
+  array_max_concurrency: 5       # Maximum concurrent boltz array tasks
+
+# ESM embeddings generation settings
+esm:
+  num_chunks: 10                    # Number of chunks for ESM array job
+  array_max_concurrency: 10       # Maximum concurrent ESM array tasks
+

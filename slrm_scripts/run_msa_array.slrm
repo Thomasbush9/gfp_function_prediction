@@ -169,19 +169,34 @@ for i in "${!SEQUENCE_ORDER[@]}"; do
   fi
 done
 
-# Append successfully processed paths
-(
-  flock -x 200
+# Append successfully processed paths using mkdir-based lock (more reliable than flock)
+PROCESSED_PATHS_LOCK_DIR="${PROCESSED_PATHS_FILE}.lockdir"
+LOCK_ACQUIRED=false
+
+# Try to acquire lock with retries
+for i in {1..20}; do
+  if mkdir "$PROCESSED_PATHS_LOCK_DIR" 2>/dev/null; then
+    LOCK_ACQUIRED=true
+    trap "rmdir '$PROCESSED_PATHS_LOCK_DIR' 2>/dev/null || true" EXIT
+    break
+  fi
+  sleep 0.1
+done
+
+if [[ "$LOCK_ACQUIRED" == "true" ]]; then
   while IFS= read -r INPUT_FASTA; do
     [[ -z "$INPUT_FASTA" ]] && continue
     echo "$INPUT_FASTA" >> "$PROCESSED_PATHS_FILE"
   done < "$LIST_FILE"
-) 200>"${PROCESSED_PATHS_FILE}.lock"
+  rmdir "$PROCESSED_PATHS_LOCK_DIR" 2>/dev/null || true
+  trap - EXIT
+else
+  echo "WARNING: Could not acquire lock for processed_paths.txt after retries"
+fi
 
 # Cleanup temporary files
 rm -f "$COMBINED_FASTA"
 rm -rf "$TEMP_OUTPUT_DIR"
-rm -f "${PROCESSED_PATHS_FILE}.lock"
 
 echo "==============================================="
 echo "[$(date +%H:%M:%S)] Batch processing complete"
@@ -189,20 +204,20 @@ echo "  Processed: ${PROCESSED_COUNT}/${NUM_FILES} sequences"
 echo "==============================================="
 
 # STEP 3: Run post-processing (convert FASTA to YAML) once after all MSA tasks complete
-# Use a lock file to ensure only one task runs this
-POST_PROCESS_LOCK="${BASE_OUTPUT_DIR}/post_process.lock"
+# Use mkdir-based lock to ensure only one task runs this (more reliable than file-based locks)
+POST_PROCESS_LOCK_DIR="${BASE_OUTPUT_DIR}/post_process.lockdir"
 POST_PROCESS_DONE="${BASE_OUTPUT_DIR}/post_process.done"
 
 if [[ ! -f "$POST_PROCESS_DONE" ]]; then
-  # Try to acquire lock (non-blocking)
-  if (set -C; echo $$ > "$POST_PROCESS_LOCK") 2>/dev/null; then
+  # Try to acquire lock using mkdir (atomic operation, more reliable)
+  if mkdir "$POST_PROCESS_LOCK_DIR" 2>/dev/null; then
     echo "[$(date +%H:%M:%S)] Task ${SLURM_ARRAY_TASK_ID} acquired lock for post-processing"
     
-    # Wait a bit to ensure all other tasks have finished writing their outputs
-    sleep 5
+    # Wait to ensure all other tasks have finished writing their outputs
+    sleep 10
     
-    # Check if we still have the lock (another task might have taken over)
-    if [[ -f "$POST_PROCESS_LOCK" ]] && [[ "$(cat "$POST_PROCESS_LOCK")" == "$$" ]]; then
+    # Double-check we still have the lock and post-processing isn't done
+    if [[ -d "$POST_PROCESS_LOCK_DIR" ]] && [[ ! -f "$POST_PROCESS_DONE" ]]; then
       # Use exported SCRIPT_DIR or fallback to computing it
       SCRIPT_DIR="${SCRIPT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
       PROCESS_SCRIPT="${SCRIPT_DIR}/process_msa_fasta.sh"
@@ -233,9 +248,10 @@ if [[ ! -f "$POST_PROCESS_DONE" ]]; then
       fi
       
       # Release lock
-      rm -f "$POST_PROCESS_LOCK"
+      rmdir "$POST_PROCESS_LOCK_DIR" 2>/dev/null || true
     else
-      echo "[$(date +%H:%M:%S)] Task ${SLURM_ARRAY_TASK_ID} lost lock, another task is handling post-processing"
+      echo "[$(date +%H:%M:%S)] Task ${SLURM_ARRAY_TASK_ID} lost lock or post-processing already done"
+      rmdir "$POST_PROCESS_LOCK_DIR" 2>/dev/null || true
     fi
   else
     echo "[$(date +%H:%M:%S)] Task ${SLURM_ARRAY_TASK_ID} could not acquire lock, another task is handling post-processing"
