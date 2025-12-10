@@ -15,10 +15,16 @@ if [ -z "$(ls -A $ROOT_DIR)" ]; then
     exit 1
 fi
 
-# find boltz output directory in the output directory
-boltz_output_dir=$(find $ROOT_DIR -maxdepth 1 -name "*boltz_chunk*" -type d )
-# get complete path combinging root and boltz
-BOLTZ_OUTPUT_DIR=$boltz_output_dir
+# find most recent boltz output directory in the output directory (by modification time)
+boltz_output_dir=$(find "$ROOT_DIR" -maxdepth 1 -type d -name "*boltz_chunk*" -printf '%T@ %p\n' | sort -rn | head -1 | cut -d' ' -f2-)
+
+if [ -z "$boltz_output_dir" ] || [ ! -d "$boltz_output_dir" ]; then
+    echo "Error: No boltz_chunks directory found in $ROOT_DIR"
+    exit 1
+fi
+
+BOLTZ_OUTPUT_DIR="$boltz_output_dir"
+echo "Using boltz chunks directory: $BOLTZ_OUTPUT_DIR"
 
 # get paths to file not processed
 TOT_FILES_BOLTZ=$BOLTZ_OUTPUT_DIR/tot_filesboltz.txt
@@ -29,20 +35,20 @@ UNPROCESSED_SEQ_IDS=$(mktemp)
 comm -23 <(sort -u <(grep -oE 'seq_[0-9]+' $TOT_FILES_BOLTZ)) <(sort -u <(grep -oE 'seq_[0-9]+' $PROCESSED_PATHS_FILE)) > $UNPROCESSED_SEQ_IDS
 
 # get full paths from tot_filesboltz.txt for unprocessed seq IDs
-touch $ROOT_DIR/unprocessed_paths.txt
+touch $ROOT_DIR/boltz_unprocessed_paths.txt
 while read seq_id; do
     grep "$seq_id" $TOT_FILES_BOLTZ
-done < $UNPROCESSED_SEQ_IDS > $ROOT_DIR/unprocessed_paths.txt
+done < $UNPROCESSED_SEQ_IDS > $ROOT_DIR/boltz_unprocessed_paths.txt
 rm $UNPROCESSED_SEQ_IDS
 
 # get number of unprocessed paths
-NUM_UNPROCESSED_PATHS=$(wc -l < $ROOT_DIR/unprocessed_paths.txt)
+NUM_UNPROCESSED_PATHS=$(wc -l < $ROOT_DIR/boltz_unprocessed_paths.txt)
 
 # print number of unprocessed paths
 echo "Number of unprocessed paths: $NUM_UNPROCESSED_PATHS"
 
 # print unprocessed paths
-cat $ROOT_DIR/unprocessed_paths.txt
+cat $ROOT_DIR/boltz_unprocessed_paths.txt
 
 # if no unprocessed paths, exit successfully
 if [ "$NUM_UNPROCESSED_PATHS" -eq 0 ]; then
@@ -84,7 +90,7 @@ mkdir -p "$NEW_BOLTZ_CHUNKS_DIR"
 echo "Creating new boltz chunks directory: $NEW_BOLTZ_CHUNKS_DIR"
 
 # Read unprocessed paths into array
-mapfile -t unprocessed_paths < "$ROOT_DIR/unprocessed_paths.txt"
+mapfile -t unprocessed_paths < "$ROOT_DIR/boltz_unprocessed_paths.txt"
 total=${#unprocessed_paths[@]}
 
 # Calculate number of chunks needed
@@ -113,13 +119,13 @@ for ((i=0; i<NUM_CHUNKS; i++)); do
     echo "Created chunk_${i} with ${file_count} files"
 done
 
-# Create tot_filesboltz.txt and processed_paths.txt
-echo "Creating tot_filesboltz.txt and processed_paths.txt..."
+# Create boltz_tot_files.txt and processed_paths.txt
+echo "Creating boltz_tot_files.txt and processed_paths.txt..."
 
-TOT_FILES_BOLTZ_NEW="${NEW_BOLTZ_CHUNKS_DIR}/tot_filesboltz.txt"
+TOT_FILES_BOLTZ_NEW="${NEW_BOLTZ_CHUNKS_DIR}/boltz_tot_files.txt"
 PROCESSED_PATHS_FILE_NEW="${NEW_BOLTZ_CHUNKS_DIR}/processed_paths.txt"
 
-# Write all unprocessed paths to tot_filesboltz.txt
+# Write all unprocessed paths to boltz_tot_files.txt
 : > "$TOT_FILES_BOLTZ_NEW"
 for path in "${unprocessed_paths[@]}"; do
     echo "$path" >> "$TOT_FILES_BOLTZ_NEW"
