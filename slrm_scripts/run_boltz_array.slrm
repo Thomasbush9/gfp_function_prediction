@@ -18,6 +18,8 @@ set -euo pipefail
 : "${SLURM_ARRAY_TASK_ID:?Need SLURM_ARRAY_TASK_ID}"
 : "${MANIFEST:?Need MANIFEST exported from sbatch}"
 : "${BASE_OUTPUT_DIR:?Need BASE_OUTPUT_DIR exported from sbatch}"
+: "${BOLTZ_RECYCLING_STEPS:=8}"
+: "${BOLTZ_DIFFUSION_SAMPLES:=10}"
 
 CHUNK_DIR="$(sed -n "${SLURM_ARRAY_TASK_ID}p" "$MANIFEST")"
 if [[ -z "${CHUNK_DIR}" || ! -d "${CHUNK_DIR}" ]]; then
@@ -73,7 +75,9 @@ mamba activate /n/holylfs06/LABS/kempner_shared/Everyone/common_envs/miniconda3/
 
 # Run boltz predict on the chunk directory
 echo "[$(date +%H:%M:%S)] Running boltz predict on chunk directory..."
-if ! boltz predict "$CHUNK_DIR" --cache "$BOLTZ_CACHE" --out_dir "$BOLTZ_OUTPUT_DIR" --devices $NUM_GPU_DEVICES --accelerator gpu --recycling_steps 8 --diffusion_samples 10 --override; then
+echo "  Recycling steps: ${BOLTZ_RECYCLING_STEPS}"
+echo "  Diffusion samples: ${BOLTZ_DIFFUSION_SAMPLES}"
+if ! boltz predict "$CHUNK_DIR" --cache "$BOLTZ_CACHE" --out_dir "$BOLTZ_OUTPUT_DIR" --devices $NUM_GPU_DEVICES --accelerator gpu --recycling_steps "$BOLTZ_RECYCLING_STEPS" --diffusion_samples "$BOLTZ_DIFFUSION_SAMPLES" --override; then
   echo "ERROR: Boltz prediction failed for chunk directory $CHUNK_DIR"
   exit 1
 fi

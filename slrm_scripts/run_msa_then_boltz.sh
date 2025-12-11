@@ -35,13 +35,19 @@ N=$(get_config "msa.num_chunks")
 MSA_ARRAY_MAX_CONCURRENCY=$(get_config "msa.array_max_concurrency")
 MAX_FILES_PER_JOB=$(get_config "boltz.max_files_per_job")
 BOLTZ_ARRAY_MAX_CONCURRENCY=$(get_config "boltz.array_max_concurrency")
+BOLTZ_RECYCLING_STEPS=$(get_config "boltz.recycling_steps")
+BOLTZ_DIFFUSION_SAMPLES=$(get_config "boltz.diffusion_samples")
 ESM_N=$(get_config "esm.num_chunks")
 ESM_ARRAY_MAX_CONCURRENCY=$(get_config "esm.array_max_concurrency")
+ES_SCRIPT_DIR=$(get_config "es.script_dir")
+ES_WT_PATH=$(get_config "es.wt_path")
+ES_ARRAY_MAX_CONCURRENCY=$(get_config "es.array_max_concurrency")
 
 # Set defaults
 ARRAY_MAX_CONCURRENCY="${MSA_ARRAY_MAX_CONCURRENCY:-100}"
 BOLTZ_ARRAY_MAX_CONCURRENCY="${BOLTZ_ARRAY_MAX_CONCURRENCY:-${ARRAY_MAX_CONCURRENCY}}"
 ESM_ARRAY_MAX_CONCURRENCY="${ESM_ARRAY_MAX_CONCURRENCY:-${ARRAY_MAX_CONCURRENCY}}"
+ES_ARRAY_MAX_CONCURRENCY="${ES_ARRAY_MAX_CONCURRENCY:-10}"
 
 # Validate required parameters
 MISSING_PARAMS=()
@@ -134,7 +140,7 @@ fi
 # Export SCRIPT_DIR so wrapper can find split_and_run_boltz.sh
 BOLTZ_WRAPPER_JOB_ID=$(sbatch --parsable \
   --dependency=afterok:${MSA_JOB_ID} \
-  --export=ALL,OUTPUT_DIR="$OUTPUT_DIR",MAX_FILES_PER_JOB="$MAX_FILES_PER_JOB",ARRAY_MAX_CONCURRENCY="$BOLTZ_ARRAY_MAX_CONCURRENCY",SCRIPT_DIR="$SCRIPT_DIR" \
+  --export=ALL,OUTPUT_DIR="$OUTPUT_DIR",MAX_FILES_PER_JOB="$MAX_FILES_PER_JOB",ARRAY_MAX_CONCURRENCY="$BOLTZ_ARRAY_MAX_CONCURRENCY",SCRIPT_DIR="$SCRIPT_DIR",BOLTZ_RECYCLING_STEPS="$BOLTZ_RECYCLING_STEPS",BOLTZ_DIFFUSION_SAMPLES="$BOLTZ_DIFFUSION_SAMPLES" \
   "$BOLTZ_WRAPPER")
 
 # Note: The actual boltz array job ID will be submitted by the wrapper script
@@ -149,14 +155,48 @@ fi
 echo "  Boltz job ID: ${BOLTZ_JOB_ID}"
 echo ""
 
+# Step 3: Launch ES analysis job after organize_boltz completes
+ES_WRAPPER="${SCRIPT_DIR}/run_es_wrapper.slrm"
+ES_SUBMITTER="${SCRIPT_DIR}/run_es_submitter.slrm"
+ES_JOB_ID=""
+
+if [[ -f "$ES_WRAPPER" ]] && [[ -f "$ES_SUBMITTER" ]] && [[ -n "$ES_SCRIPT_DIR" ]] && [[ -n "$ES_WT_PATH" ]]; then
+  echo "Step 3: Setting up ES analysis (will run after boltz organize completes)..."
+  
+  ES_SUBMITTER_JOB_ID=$(sbatch --parsable \
+    --dependency=afterok:${BOLTZ_JOB_ID} \
+    --export=ALL,OUTPUT_DIR="$OUTPUT_DIR",BOLTZ_WRAPPER_JOB_ID="$BOLTZ_JOB_ID",SCRIPT_DIR="$SCRIPT_DIR",CONFIG_FILE="$CONFIG_FILE",ES_WRAPPER="$ES_WRAPPER" \
+    "$ES_SUBMITTER")
+  
+  if [[ -n "$ES_SUBMITTER_JOB_ID" ]]; then
+    ES_JOB_ID="$ES_SUBMITTER_JOB_ID"
+    echo "  ES submitter job ID: ${ES_SUBMITTER_JOB_ID} (will submit ES wrapper after organize_boltz completes)"
+  else
+    echo "  WARNING: Failed to submit ES submitter job"
+  fi
+elif [[ -z "$ES_SCRIPT_DIR" ]] || [[ -z "$ES_WT_PATH" ]]; then
+  echo "Step 3: Skipping ES analysis (missing configuration: script_dir or wt_path)"
+else
+  echo "Step 3: Skipping ES analysis (wrapper or submitter script not found)"
+fi
+echo ""
+
 echo "==============================================="
 echo "All jobs submitted successfully:"
 echo "  MSA job: ${MSA_JOB_ID} (includes post-processing: FASTA->YAML)"
 echo "  ESM job: ${ESM_JOB_ID} (depends on MSA job, runs in parallel with Boltz)"
 echo "  Boltz job: ${BOLTZ_JOB_ID} (depends on MSA job, runs in parallel with ESM)"
+if [[ -n "$ES_JOB_ID" ]]; then
+  echo "  ES submitter job: ${ES_JOB_ID} (depends on Boltz job, will submit ES wrapper after organize completes)"
+fi
 echo "==============================================="
 echo ""
 echo "Monitor jobs with:"
-echo "  squeue -u $USER"
-echo "  squeue -j ${MSA_JOB_ID},${ESM_JOB_ID},${BOLTZ_JOB_ID}"
+if [[ -n "$ES_JOB_ID" ]]; then
+  echo "  squeue -u $USER"
+  echo "  squeue -j ${MSA_JOB_ID},${ESM_JOB_ID},${BOLTZ_JOB_ID},${ES_JOB_ID}"
+else
+  echo "  squeue -u $USER"
+  echo "  squeue -j ${MSA_JOB_ID},${ESM_JOB_ID},${BOLTZ_JOB_ID}"
+fi
 

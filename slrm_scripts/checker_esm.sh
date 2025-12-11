@@ -92,13 +92,25 @@ echo "Output parent directory: $OUTPUT_PARENT_DIR"
 TEMP_DIR=$(mktemp -d -p "$ROOT_DIR" esm_retry_yamls_XXXXXX)
 echo "Creating temporary directory for unprocessed yaml files: $TEMP_DIR"
 
-# Read unprocessed paths and create symlinks
+# Read unprocessed paths and create symlinks with unique names
 mapfile -t unprocessed_paths < "$UNPROCESSED_PATHS_FILE"
+COUNTER=0
 for path in "${unprocessed_paths[@]}"; do
     path="${path//$'\r'/}"  # Remove carriage returns
     if [ -f "$path" ]; then
-        # Create symlink in temp directory, preserving original filename
-        ln -s "$path" "$TEMP_DIR/$(basename "$path")"
+        # Create unique symlink name to avoid conflicts from duplicate basenames
+        # Use counter-based naming to ensure all symlinks have unique names
+        BASENAME=$(basename "$path")
+        # Extract stem and extension for counter-based naming
+        if [[ "$BASENAME" == *.* ]]; then
+            STEM="${BASENAME%.*}"
+            EXT="${BASENAME##*.}"
+            LINK_NAME="${STEM}_${COUNTER}.${EXT}"
+        else
+            LINK_NAME="${BASENAME}_${COUNTER}"
+        fi
+        ln -s "$path" "$TEMP_DIR/$LINK_NAME"
+        ((COUNTER++)) || true
     else
         echo "Warning: File not found: $path"
     fi

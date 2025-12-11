@@ -1,5 +1,5 @@
 input:
-  fasta_dir: /n/home06/tbush/gfp_function_prediction/data/20250815_102358_subsample/subsample
+  fasta_dir: /n/home06/tbush/gfp_function_prediction/data/trial_10
 
 # Output parent directory where all results will be stored
 output:
@@ -14,9 +14,18 @@ msa:
 boltz:
   max_files_per_job: 10            # Maximum number of .yaml files per boltz array job
   array_max_concurrency: 5       # Maximum concurrent boltz array tasks
+  delete_msa_after_processing: false  # Delete MSA files after successful boltz processing
+  recycling_steps: 8               # Number of recycling steps for boltz prediction
+  diffusion_samples: 10            # Number of diffusion samples for boltz prediction
 
 # ESM embeddings generation settings
 esm:
   num_chunks: 10                    # Number of chunks for ESM array job
   array_max_concurrency: 10       # Maximum concurrent ESM array tasks
+
+# ES (Evolutionary Scale) analysis settings
+es:
+  script_dir: //n/home06/tbush/es-analysis-src # Directory containing main.py
+  wt_path: "/n/home06/tbush/gfp_function_prediction/data/outputs/original_out_with_kerneles/chunks_20251013_111729/41191729_2/boltz/test_input.fasta/boltz_results_test_input.fasta_prot_pipeline/predictions/test_input.fasta_prot_pipeline/test_input.fasta_prot_pipeline_model_0.cif"                       # Path to wild-type protein file (REQUIRED)
+  array_max_concurrency: 10        # Maximum concurrent ES array tasks
 

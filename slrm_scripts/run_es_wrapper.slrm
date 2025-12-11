@@ -1,0 +1,68 @@
+#!/bin/bash
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=1
+#SBATCH --cpus-per-task=1
+#SBATCH --gpus-per-node=1
+#SBATCH --mem=4GB
+#SBATCH --partition=kempner_requeue
+#SBATCH --account=kempner_bsabatini_lab
+#SBATCH --time=0:10:00
+#SBATCH --output=/n/home06/tbush/job_logs/%x.%j.out
+
+set -euo pipefail
+
+: "${OUTPUT_DIR:?Need OUTPUT_DIR}"
+: "${SCRIPT_DIR:?Need SCRIPT_DIR}"
+: "${CONFIG_FILE:?Need CONFIG_FILE}"
+
+# Parse config file using Python
+PARSE_SCRIPT="${SCRIPT_DIR}/parse_config.py"
+
+# Function to get config value
+get_config() {
+  local key="$1"
+  python3 "$PARSE_SCRIPT" "$CONFIG_FILE" "$key" 2>/dev/null || echo ""
+}
+
+# Read ES configuration values
+ES_SCRIPT_DIR=$(get_config "es.script_dir")
+ES_WT_PATH=$(get_config "es.wt_path")
+ES_ARRAY_MAX_CONCURRENCY=$(get_config "es.array_max_concurrency")
+
+# Set defaults
+ES_ARRAY_MAX_CONCURRENCY="${ES_ARRAY_MAX_CONCURRENCY:-10}"
+
+# Validate required parameters
+MISSING_PARAMS=()
+[[ -z "$ES_SCRIPT_DIR" ]] && MISSING_PARAMS+=("es.script_dir")
+[[ -z "$ES_WT_PATH" ]] && MISSING_PARAMS+=("es.wt_path")
+
+if (( ${#MISSING_PARAMS[@]} > 0 )); then
+  echo "ERROR: Missing required ES parameters in config file:"
+  for param in "${MISSING_PARAMS[@]}"; do
+    echo "  - $param"
+  done
+  exit 1
+fi
+
+ES_SCRIPT="${SCRIPT_DIR}/run_es.sh"
+
+if [[ ! -f "$ES_SCRIPT" ]]; then
+  echo "ERROR: run_es.sh not found at $ES_SCRIPT"
+  exit 1
+fi
+
+if [[ ! -f "$ES_WT_PATH" ]]; then
+  echo "ERROR: WT protein file not found at $ES_WT_PATH"
+  exit 1
+fi
+
+echo "==============================================="
+echo "Launching ES analysis array job"
+echo "  Output dir (ROOT_DIR): $OUTPUT_DIR"
+echo "  Script dir: $ES_SCRIPT_DIR"
+echo "  WT path: $ES_WT_PATH"
+echo "  Array max concurrency: $ES_ARRAY_MAX_CONCURRENCY"
+echo "==============================================="
+
+"$ES_SCRIPT" "$OUTPUT_DIR" "$ES_SCRIPT_DIR" "$ES_WT_PATH" "$ES_ARRAY_MAX_CONCURRENCY"

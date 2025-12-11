@@ -18,6 +18,10 @@ ROOT_DIR="$(realpath "$ROOT_DIR")"
 SCRIPT_DIR="$(realpath "$SCRIPT_DIR")"
 WT_PATH="$(realpath "$WT_PATH")"
 
+# Get directory containing this script (slrm_scripts directory)
+ES_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ES_ARRAY_SCRIPT="${ES_SCRIPT_DIR}/run_es_array.slrm"
+
 # Two manifests: CIF inputs and future output CSVs
 CIF_MANIFEST="${ROOT_DIR}/cif_manifest.txt"
 OUT_MANIFEST="${ROOT_DIR}/out_manifest.txt"
@@ -62,7 +66,7 @@ ARRAY_JOB_ID="$(
   sbatch --parsable \
     --array=1-"$NUM_TASKS"%${ARRAY_MAX_CONCURRENCY} \
     --export=ALL,CIF_MANIFEST="$CIF_MANIFEST",OUT_MANIFEST="$OUT_MANIFEST",SCRIPT_DIR="$SCRIPT_DIR",WT_PATH="$WT_PATH" \
-    run_es_array.slrm
+    "$ES_ARRAY_SCRIPT"
 )"
 
 echo "Submitted array job ${ARRAY_JOB_ID} with ${NUM_TASKS} tasks."

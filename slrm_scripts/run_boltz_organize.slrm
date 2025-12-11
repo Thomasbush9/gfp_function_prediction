@@ -22,14 +22,17 @@ if [[ ! -f "$ORGANIZE_SCRIPT" ]]; then
   exit 1
 fi
 
+CONFIG_FILE="${SCRIPT_DIR}/pipeline_config.yaml"
+
 echo "==============================================="
 echo "Organizing boltz outputs"
 echo "  Base output dir: $BASE_OUTPUT_DIR"
 echo "  Boltz chunks dir: $BOLTZ_CHUNKS_DIR"
+echo "  Config file: $CONFIG_FILE"
 echo "==============================================="
 
-# Pass both directories: BOLTZ_CHUNKS_DIR contains boltz_output/, BASE_OUTPUT_DIR is where seq_idx/ dirs are
-"$ORGANIZE_SCRIPT" "$BASE_OUTPUT_DIR" "$BOLTZ_CHUNKS_DIR"
+# Pass both directories and config file: BOLTZ_CHUNKS_DIR contains boltz_output/, BASE_OUTPUT_DIR is where seq_idx/ dirs are
+"$ORGANIZE_SCRIPT" "$BASE_OUTPUT_DIR" "$BOLTZ_CHUNKS_DIR" "$CONFIG_FILE"
 
 echo "==============================================="
 echo "Boltz output organization complete"

@@ -1,0 +1,49 @@
+#!/bin/bash
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=1
+#SBATCH --cpus-per-task=1
+#SBATCH --gpus-per-node=1
+#SBATCH --mem=1GB
+#SBATCH --partition=kempner_requeue
+#SBATCH --account=kempner_bsabatini_lab
+#SBATCH --time=0:05:00
+#SBATCH --output=/n/home06/tbush/job_logs/%x.%j.out
+
+set -euo pipefail
+
+: "${OUTPUT_DIR:?Need OUTPUT_DIR}"
+: "${BOLTZ_WRAPPER_JOB_ID:?Need BOLTZ_WRAPPER_JOB_ID}"
+: "${SCRIPT_DIR:?Need SCRIPT_DIR}"
+: "${CONFIG_FILE:?Need CONFIG_FILE}"
+: "${ES_WRAPPER:?Need ES_WRAPPER}"
+
+# Wait for boltz wrapper to complete
+echo "Waiting for boltz wrapper job ${BOLTZ_WRAPPER_JOB_ID} to complete..."
+while squeue -j "${BOLTZ_WRAPPER_JOB_ID}" -h &>/dev/null; do
+  sleep 5
+done
+
+# Wait a bit more for organize job ID file to be written
+sleep 2
+
+# Read organize job ID from file
+ORGANIZE_JOB_ID_FILE="${OUTPUT_DIR}/.organize_boltz_job_id"
+if [[ -f "$ORGANIZE_JOB_ID_FILE" ]]; then
+  ORGANIZE_JOB_ID=$(cat "$ORGANIZE_JOB_ID_FILE")
+  echo "Found organize job ID: ${ORGANIZE_JOB_ID}"
+  
+  # Submit ES wrapper with dependency on organize job
+  ES_WRAPPER_JOB_ID=$(sbatch --parsable \
+    --dependency=afterok:${ORGANIZE_JOB_ID} \
+    --export=ALL,OUTPUT_DIR="$OUTPUT_DIR",SCRIPT_DIR="$SCRIPT_DIR",CONFIG_FILE="$CONFIG_FILE" \
+    "$ES_WRAPPER")
+  
+  echo "Submitted ES wrapper job ${ES_WRAPPER_JOB_ID} (depends on organize job ${ORGANIZE_JOB_ID})"
+else
+  echo "WARNING: Organize job ID file not found at ${ORGANIZE_JOB_ID_FILE}, submitting ES job without dependency"
+  ES_WRAPPER_JOB_ID=$(sbatch --parsable \
+    --export=ALL,OUTPUT_DIR="$OUTPUT_DIR",SCRIPT_DIR="$SCRIPT_DIR",CONFIG_FILE="$CONFIG_FILE" \
+    "$ES_WRAPPER")
+  
+  echo "Submitted ES wrapper job ${ES_WRAPPER_JOB_ID}"
+fi

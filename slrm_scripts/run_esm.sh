@@ -33,7 +33,8 @@ echo "Finding .yaml files in: $OUTPUT_DIR"
 echo "Chunk files will be created in: $ESM_CHUNKS_DIR"
 
 # Recursively collect all .yaml files (absolute paths), null-safe & sorted
-mapfile -d '' -t yaml_files < <(find "$OUTPUT_DIR" -type f -name "*.yaml" -print0 | sort -z)
+# Use -L to follow symlinks (needed for checker_esm.sh retry workflow)
+mapfile -d '' -t yaml_files < <(find -L "$OUTPUT_DIR" -type f -name "*.yaml" -print0 | sort -z)
 total=${#yaml_files[@]}
 
 if (( total == 0 )); then

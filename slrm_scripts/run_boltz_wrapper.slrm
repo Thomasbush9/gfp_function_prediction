@@ -15,6 +15,8 @@ set -euo pipefail
 : "${MAX_FILES_PER_JOB:?Need MAX_FILES_PER_JOB}"
 : "${ARRAY_MAX_CONCURRENCY:=100}"
 : "${SCRIPT_DIR:?Need SCRIPT_DIR}"
+: "${BOLTZ_RECYCLING_STEPS:=8}"
+: "${BOLTZ_DIFFUSION_SAMPLES:=10}"
 
 echo "DEBUG: SCRIPT_DIR=${SCRIPT_DIR}"
 BOLTZ_SCRIPT="${SCRIPT_DIR}/split_and_run_boltz.sh"
@@ -32,7 +34,19 @@ echo "  Output dir: $OUTPUT_DIR"
 echo "  Max files per job: $MAX_FILES_PER_JOB"
 echo "==============================================="
 
-"$BOLTZ_SCRIPT" "$OUTPUT_DIR" "$MAX_FILES_PER_JOB" "$ARRAY_MAX_CONCURRENCY"
+# Capture output to extract organize job ID
+BOLTZ_OUTPUT=$("$BOLTZ_SCRIPT" "$OUTPUT_DIR" "$MAX_FILES_PER_JOB" "$ARRAY_MAX_CONCURRENCY" "$BOLTZ_RECYCLING_STEPS" "$BOLTZ_DIFFUSION_SAMPLES")
+echo "$BOLTZ_OUTPUT"
+
+# Extract organize job ID from output (if present)
+ORGANIZE_JOB_ID=$(echo "$BOLTZ_OUTPUT" | grep -oP 'Submitted organize job \K[0-9]+' || echo "")
+
+# Write organize job ID to file if found (for ES job dependency)
+if [[ -n "$ORGANIZE_JOB_ID" ]]; then
+  ORGANIZE_JOB_ID_FILE="${OUTPUT_DIR}/.organize_boltz_job_id"
+  echo "$ORGANIZE_JOB_ID" > "$ORGANIZE_JOB_ID_FILE"
+  echo "Wrote organize job ID ${ORGANIZE_JOB_ID} to ${ORGANIZE_JOB_ID_FILE}"
+fi
 
 
 

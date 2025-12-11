@@ -1,18 +1,41 @@
 #!/bin/bash
 set -euo pipefail
 
-# Usage: ./organize_boltz_outputs.sh BASE_OUTPUT_DIR [BOLTZ_CHUNKS_DIR]
+# Usage: ./organize_boltz_outputs.sh BASE_OUTPUT_DIR [BOLTZ_CHUNKS_DIR] [CONFIG_FILE]
 # Example: ./organize_boltz_outputs.sh /data/chunks_20240101_120000 /data/chunks_20240101_120000/boltz_chunks_20240101_120000
 #          ./organize_boltz_outputs.sh /data/chunks_20240101_120000  (finds all boltz_chunks_* directories)
 
 BASE_OUTPUT_DIR="${1:-}"
 BOLTZ_CHUNKS_DIR="${2:-}"
+CONFIG_FILE="${3:-}"
 
 if [[ -z "${BASE_OUTPUT_DIR}" ]]; then
-  echo "Usage: $0 BASE_OUTPUT_DIR [BOLTZ_CHUNKS_DIR]"
+  echo "Usage: $0 BASE_OUTPUT_DIR [BOLTZ_CHUNKS_DIR] [CONFIG_FILE]"
   echo "  BASE_OUTPUT_DIR: Base output directory containing sequence directories (seq_idx/)"
   echo "  BOLTZ_CHUNKS_DIR: (Optional) Specific boltz_chunks directory. If not provided, processes all boltz_chunks_* directories"
+  echo "  CONFIG_FILE: (Optional) Path to pipeline_config.yaml. If not provided, MSA deletion will be disabled"
   exit 1
+fi
+
+# Get script directory to find parse_config.py and default config
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# If CONFIG_FILE not provided, try to find default config
+if [[ -z "${CONFIG_FILE}" ]]; then
+  CONFIG_FILE="${SCRIPT_DIR}/pipeline_config.yaml"
+fi
+
+# Check if delete_msa_after_processing is enabled
+DELETE_MSA=false
+if [[ -f "$CONFIG_FILE" ]]; then
+  DELETE_MSA_OPTION=$(python3 "${SCRIPT_DIR}/parse_config.py" "$CONFIG_FILE" "boltz.delete_msa_after_processing" 2>/dev/null || echo "false")
+  if [[ "$DELETE_MSA_OPTION" == "True" ]] || [[ "$DELETE_MSA_OPTION" == "true" ]] || [[ "$DELETE_MSA_OPTION" == "1" ]]; then
+    DELETE_MSA=true
+  fi
+fi
+
+if [[ "$DELETE_MSA" == "true" ]]; then
+  echo "MSA deletion enabled: MSA files will be deleted after successful boltz processing"
 fi
 
 # Normalize to absolute paths
@@ -33,6 +56,7 @@ fi
 
 TOTAL_PROCESSED=0
 TOTAL_SKIPPED=0
+TOTAL_MSA_DELETED=0
 
 # Process each boltz_chunks directory
 for BOLTZ_CHUNKS_DIR in "${boltz_chunks_dirs[@]}"; do
@@ -63,6 +87,7 @@ for BOLTZ_CHUNKS_DIR in "${boltz_chunks_dirs[@]}"; do
 
   PROCESSED_COUNT=0
   SKIPPED_COUNT=0
+  MSA_DELETED_COUNT=0
 
 for pred_dir in "${prediction_dirs[@]}"; do
   # Extract sequence ID from directory name (handle both seq_idx and idx formats)
@@ -130,6 +155,17 @@ for pred_dir in "${prediction_dirs[@]}"; do
     if (( FILES_DELETED > 0 )); then
       echo "  Cleaned up ${FILES_DELETED} files from source directory"
     fi
+    
+    # Delete MSA directory if enabled
+    if [[ "$DELETE_MSA" == "true" ]]; then
+      MSA_DIR="${BASE_OUTPUT_DIR}/seq_${SEQ_ID}/msa"
+      if [[ -d "$MSA_DIR" ]]; then
+        MSA_FILES_COUNT=$(find "$MSA_DIR" -type f | wc -l)
+        rm -rf "$MSA_DIR"
+        echo "  Deleted MSA directory ($MSA_FILES_COUNT files) for $SEQ_ID"
+        ((MSA_DELETED_COUNT++)) || true
+      fi
+    fi
   else
     echo "WARNING: No files copied for $SEQ_ID (model ${HIGHEST_MODEL})"
     ((SKIPPED_COUNT++)) || true
@@ -140,15 +176,22 @@ done
   echo "Organization complete for $BOLTZ_CHUNKS_DIR"
   echo "  Processed: $PROCESSED_COUNT sequences"
   echo "  Skipped: $SKIPPED_COUNT sequences"
+  if [[ "$DELETE_MSA" == "true" ]]; then
+    echo "  MSA directories deleted: $MSA_DELETED_COUNT"
+  fi
   echo "==============================================="
   
   TOTAL_PROCESSED=$((TOTAL_PROCESSED + PROCESSED_COUNT))
   TOTAL_SKIPPED=$((TOTAL_SKIPPED + SKIPPED_COUNT))
+  TOTAL_MSA_DELETED=$((TOTAL_MSA_DELETED + MSA_DELETED_COUNT))
 done
 
 echo "==============================================="
 echo "Overall organization complete"
 echo "  Total processed: $TOTAL_PROCESSED sequences"
 echo "  Total skipped: $TOTAL_SKIPPED sequences"
+if [[ "$DELETE_MSA" == "true" ]]; then
+  echo "  Total MSA directories deleted: $TOTAL_MSA_DELETED"
+fi
 echo "==============================================="
 
