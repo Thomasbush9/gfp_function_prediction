@@ -66,3 +66,4 @@ echo "  Array max concurrency: $ES_ARRAY_MAX_CONCURRENCY"
 echo "==============================================="
 
 "$ES_SCRIPT" "$OUTPUT_DIR" "$ES_SCRIPT_DIR" "$ES_WT_PATH" "$ES_ARRAY_MAX_CONCURRENCY"
+

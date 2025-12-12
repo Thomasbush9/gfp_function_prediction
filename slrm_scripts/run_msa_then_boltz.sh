@@ -128,6 +128,30 @@ fi
 
 echo "  ESM job ID: ${ESM_JOB_ID}"
 
+# Submit ESM checker job (runs only if ESM job fails)
+CHECKER_ESM_SCRIPT="${SCRIPT_DIR}/checker_esm.sh"
+if [[ -f "$CHECKER_ESM_SCRIPT" ]]; then
+  CHECKER_ESM_WRAPPER="${SCRIPT_DIR}/run_checker_esm.slrm"
+  if [[ -f "$CHECKER_ESM_WRAPPER" ]]; then
+    CHECKER_ESM_JOB_ID=$(sbatch --parsable \
+      --dependency=afternotok:${ESM_JOB_ID} \
+      --export=ALL,OUTPUT_DIR="$OUTPUT_DIR",SCRIPT_DIR="$SCRIPT_DIR" \
+      "$CHECKER_ESM_WRAPPER" 2>/dev/null || echo "")
+    if [[ -n "$CHECKER_ESM_JOB_ID" ]]; then
+      echo "  ESM checker job ID: ${CHECKER_ESM_JOB_ID} (will run if ESM job fails)"
+    fi
+  else
+    # Fallback: submit checker directly if no wrapper exists
+    CHECKER_ESM_JOB_ID=$(sbatch --parsable \
+      --dependency=afternotok:${ESM_JOB_ID} \
+      --export=ALL,OUTPUT_DIR="$OUTPUT_DIR" \
+      --wrap="bash $CHECKER_ESM_SCRIPT $OUTPUT_DIR" 2>/dev/null || echo "")
+    if [[ -n "$CHECKER_ESM_JOB_ID" ]]; then
+      echo "  ESM checker job ID: ${CHECKER_ESM_JOB_ID} (will run if ESM job fails)"
+    fi
+  fi
+fi
+
 # Launch Boltz job
 BOLTZ_WRAPPER="${SCRIPT_DIR}/run_boltz_wrapper.slrm"
 if [[ ! -f "$BOLTZ_WRAPPER" ]]; then
@@ -153,6 +177,18 @@ if [[ -z "$BOLTZ_JOB_ID" ]]; then
 fi
 
 echo "  Boltz job ID: ${BOLTZ_JOB_ID}"
+
+# Submit Boltz+ES checker job (runs only if Boltz job fails)
+CHECKER_BOLTZ_SCRIPT="${SCRIPT_DIR}/run_checker_boltz.slrm"
+if [[ -f "$CHECKER_BOLTZ_SCRIPT" ]]; then
+  CHECKER_BOLTZ_JOB_ID=$(sbatch --parsable \
+    --dependency=afternotok:${BOLTZ_JOB_ID} \
+    --export=ALL,OUTPUT_DIR="$OUTPUT_DIR",SCRIPT_DIR="$SCRIPT_DIR" \
+    "$CHECKER_BOLTZ_SCRIPT" 2>/dev/null || echo "")
+  if [[ -n "$CHECKER_BOLTZ_JOB_ID" ]]; then
+    echo "  Boltz+ES checker job ID: ${CHECKER_BOLTZ_JOB_ID} (will run if Boltz job fails)"
+  fi
+fi
 echo ""
 
 # Step 3: Launch ES analysis job after organize_boltz completes
@@ -171,6 +207,18 @@ if [[ -f "$ES_WRAPPER" ]] && [[ -f "$ES_SUBMITTER" ]] && [[ -n "$ES_SCRIPT_DIR" 
   if [[ -n "$ES_SUBMITTER_JOB_ID" ]]; then
     ES_JOB_ID="$ES_SUBMITTER_JOB_ID"
     echo "  ES submitter job ID: ${ES_SUBMITTER_JOB_ID} (will submit ES wrapper after organize_boltz completes)"
+    
+    # Submit ES checker job (runs only if ES submitter job fails)
+    # Note: This will check both Boltz and ES outputs since checker_boltz.sh handles both
+    if [[ -f "$CHECKER_BOLTZ_SCRIPT" ]]; then
+      CHECKER_ES_JOB_ID=$(sbatch --parsable \
+        --dependency=afternotok:${ES_JOB_ID} \
+        --export=ALL,OUTPUT_DIR="$OUTPUT_DIR",SCRIPT_DIR="$SCRIPT_DIR" \
+        "$CHECKER_BOLTZ_SCRIPT" 2>/dev/null || echo "")
+      if [[ -n "$CHECKER_ES_JOB_ID" ]]; then
+        echo "  ES checker job ID: ${CHECKER_ES_JOB_ID} (will run if ES job fails)"
+      fi
+    fi
   else
     echo "  WARNING: Failed to submit ES submitter job"
   fi
@@ -185,9 +233,18 @@ echo "==============================================="
 echo "All jobs submitted successfully:"
 echo "  MSA job: ${MSA_JOB_ID} (includes post-processing: FASTA->YAML)"
 echo "  ESM job: ${ESM_JOB_ID} (depends on MSA job, runs in parallel with Boltz)"
+if [[ -n "${CHECKER_ESM_JOB_ID:-}" ]]; then
+  echo "    Checker: ${CHECKER_ESM_JOB_ID} (runs if ESM job fails)"
+fi
 echo "  Boltz job: ${BOLTZ_JOB_ID} (depends on MSA job, runs in parallel with ESM)"
+if [[ -n "${CHECKER_BOLTZ_JOB_ID:-}" ]]; then
+  echo "    Checker: ${CHECKER_BOLTZ_JOB_ID} (runs if Boltz job fails, checks both Boltz and ES)"
+fi
 if [[ -n "$ES_JOB_ID" ]]; then
   echo "  ES submitter job: ${ES_JOB_ID} (depends on Boltz job, will submit ES wrapper after organize completes)"
+  if [[ -n "${CHECKER_ES_JOB_ID:-}" ]]; then
+    echo "    Checker: ${CHECKER_ES_JOB_ID} (runs if ES job fails, checks both Boltz and ES)"
+  fi
 fi
 echo "==============================================="
 echo ""
