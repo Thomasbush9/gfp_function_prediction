@@ -73,14 +73,18 @@ fi
 
 MAX_FILES_PER_JOB=$(python3 "${SCRIPT_DIR}/parse_config.py" "$CONFIG_FILE" "boltz.max_files_per_job")
 ARRAY_MAX_CONCURRENCY=$(python3 "${SCRIPT_DIR}/parse_config.py" "$CONFIG_FILE" "boltz.array_max_concurrency")
+BOLTZ_RECYCLING_STEPS=$(python3 "${SCRIPT_DIR}/parse_config.py" "$CONFIG_FILE" "boltz.recycling_steps")
+BOLTZ_DIFFUSION_SAMPLES=$(python3 "${SCRIPT_DIR}/parse_config.py" "$CONFIG_FILE" "boltz.diffusion_samples")
 
-if [ -z "$MAX_FILES_PER_JOB" ] || [ -z "$ARRAY_MAX_CONCURRENCY" ]; then
+if [ -z "$MAX_FILES_PER_JOB" ] || [ -z "$ARRAY_MAX_CONCURRENCY" ] || [ -z "$BOLTZ_RECYCLING_STEPS" ] || [ -z "$BOLTZ_DIFFUSION_SAMPLES" ]; then
     echo "Error: Failed to read boltz configuration from $CONFIG_FILE"
     exit 1
 fi
 
 echo "Max files per job: $MAX_FILES_PER_JOB"
 echo "Array max concurrency: $ARRAY_MAX_CONCURRENCY"
+echo "Recycling steps: $BOLTZ_RECYCLING_STEPS"
+echo "Diffusion samples: $BOLTZ_DIFFUSION_SAMPLES"
 
 # Create new timestamped boltz_chunks directory
 TS="$(date +%Y%m%d_%H%M%S)"
@@ -169,7 +173,7 @@ fi
 ARRAY_JOB_ID="$(
     sbatch --parsable \
         --array=1-"$NUM_TASKS"%${ARRAY_MAX_CONCURRENCY} \
-        --export=ALL,MANIFEST="$MANIFEST",BASE_OUTPUT_DIR="$NEW_BOLTZ_CHUNKS_DIR" \
+        --export=ALL,MANIFEST="$MANIFEST",BASE_OUTPUT_DIR="$NEW_BOLTZ_CHUNKS_DIR",BOLTZ_RECYCLING_STEPS="$BOLTZ_RECYCLING_STEPS",BOLTZ_DIFFUSION_SAMPLES="$BOLTZ_DIFFUSION_SAMPLES" \
         "$BOLTZ_SCRIPT"
 )"
 
