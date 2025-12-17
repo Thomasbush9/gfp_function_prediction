@@ -31,7 +31,7 @@ get_config() {
 # Read configuration values
 INPUT_DIR=$(get_config "input.fasta_dir")
 OUTPUT_PARENT_DIR=$(get_config "output.parent_dir")
-N=$(get_config "msa.num_chunks")
+MSA_MAX_FILES_PER_JOB=$(get_config "msa.max_files_per_job")
 MSA_ARRAY_MAX_CONCURRENCY=$(get_config "msa.array_max_concurrency")
 MAX_FILES_PER_JOB=$(get_config "boltz.max_files_per_job")
 BOLTZ_ARRAY_MAX_CONCURRENCY=$(get_config "boltz.array_max_concurrency")
@@ -53,7 +53,7 @@ ES_ARRAY_MAX_CONCURRENCY="${ES_ARRAY_MAX_CONCURRENCY:-10}"
 MISSING_PARAMS=()
 [[ -z "$INPUT_DIR" ]] && MISSING_PARAMS+=("input.fasta_dir")
 [[ -z "$OUTPUT_PARENT_DIR" ]] && MISSING_PARAMS+=("output.parent_dir")
-[[ -z "$N" ]] && MISSING_PARAMS+=("msa.num_chunks")
+[[ -z "$MSA_MAX_FILES_PER_JOB" ]] && MISSING_PARAMS+=("msa.max_files_per_job")
 [[ -z "$MAX_FILES_PER_JOB" ]] && MISSING_PARAMS+=("boltz.max_files_per_job")
 [[ -z "$ESM_N" ]] && MISSING_PARAMS+=("esm.num_chunks")
 
@@ -86,7 +86,7 @@ echo ""
 
 # Step 1: Launch MSA array job
 echo "Step 1: Launching MSA generation..."
-MSA_JOB_OUTPUT=$("$MSA_SCRIPT" "$INPUT_DIR" "$N" "$OUTPUT_PARENT_DIR" "$MSA_ARRAY_MAX_CONCURRENCY")
+MSA_JOB_OUTPUT=$("$MSA_SCRIPT" "$INPUT_DIR" "$MSA_MAX_FILES_PER_JOB" "$OUTPUT_PARENT_DIR" "$MSA_ARRAY_MAX_CONCURRENCY")
 
 # Extract MSA job ID and output directory from the output
 MSA_JOB_ID=$(echo "$MSA_JOB_OUTPUT" | grep -oP 'Submitted array job \K[0-9]+' || echo "")
@@ -101,6 +101,19 @@ fi
 echo "  MSA job ID: ${MSA_JOB_ID}"
 echo "  Output directory: ${OUTPUT_DIR}"
 echo "  Note: Post-processing (FASTA->YAML) will run automatically at the end of MSA job"
+echo ""
+
+# Submit MSA checker job (runs only if MSA job fails)
+CHECKER_MSA_SCRIPT="${SCRIPT_DIR}/run_checker_msa.slrm"
+if [[ -f "$CHECKER_MSA_SCRIPT" ]]; then
+  CHECKER_MSA_JOB_ID=$(sbatch --parsable \
+    --dependency=afternotok:${MSA_JOB_ID} \
+    --export=ALL,OUTPUT_DIR="$OUTPUT_DIR",SCRIPT_DIR="$SCRIPT_DIR" \
+    "$CHECKER_MSA_SCRIPT" 2>/dev/null || echo "")
+  if [[ -n "$CHECKER_MSA_JOB_ID" ]]; then
+    echo "  MSA checker job ID: ${CHECKER_MSA_JOB_ID} (will run if MSA job fails)"
+  fi
+fi
 echo ""
 
 # Step 2: Launch ESM and Boltz array jobs that depend on MSA completion
@@ -232,6 +245,9 @@ echo ""
 echo "==============================================="
 echo "All jobs submitted successfully:"
 echo "  MSA job: ${MSA_JOB_ID} (includes post-processing: FASTA->YAML)"
+if [[ -n "${CHECKER_MSA_JOB_ID:-}" ]]; then
+  echo "    Checker: ${CHECKER_MSA_JOB_ID} (runs if MSA job fails)"
+fi
 echo "  ESM job: ${ESM_JOB_ID} (depends on MSA job, runs in parallel with Boltz)"
 if [[ -n "${CHECKER_ESM_JOB_ID:-}" ]]; then
   echo "    Checker: ${CHECKER_ESM_JOB_ID} (runs if ESM job fails)"

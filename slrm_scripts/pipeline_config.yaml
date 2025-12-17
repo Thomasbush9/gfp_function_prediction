@@ -1,5 +1,5 @@
 input:
-  fasta_dir: /n/home06/tbush/gfp_function_prediction/data/trial_10
+  fasta_dir: /n/home06/tbush/gfp_function_prediction/data/20250815_102358_subsample/subsample
   # fasta_dir: /n/home06/tbush/gfp_function_prediction/data/20250815_102358_subsample/subsample
 
 # Output parent directory where all results will be stored
@@ -8,25 +8,24 @@ output:
 
 # MSA (Multiple Sequence Alignment) generation settings
 msa:
-  num_chunks: 2                    # Number of chunks for MSA array job
-  array_max_concurrency: 5       # Maximum concurrent MSA array tasks
+  max_files_per_job: 40            # Maximum number of .fasta files per MSA array job
+  array_max_concurrency: 10       # Maximum concurrent MSA array tasks
 
 # Boltz structure prediction settings
 boltz:
-  max_files_per_job: 10            # Maximum number of .yaml files per boltz array job
-  array_max_concurrency: 5       # Maximum concurrent boltz array tasks
+  max_files_per_job: 25            # Maximum number of .yaml files per boltz array job
+  array_max_concurrency: 10       # Maximum concurrent boltz array tasks
   delete_msa_after_processing: false  # Delete MSA files after successful boltz processing
   recycling_steps: 10               # Number of recycling steps for boltz prediction
   diffusion_samples: 25            # Number of diffusion samples for boltz prediction
 
 # ESM embeddings generation settings
 esm:
-  num_chunks: 2                    # Number of chunks for ESM array job
-  array_max_concurrency: 10       # Maximum concurrent ESM array tasks
+  num_chunks: 1                    # Number of chunks for ESM array job
+  array_max_concurrency: 20       # Maximum concurrent ESM array tasks
 
 # ES (Evolutionary Scale) analysis settings
 es:
   script_dir: //n/home06/tbush/es-analysis-src # Directory containing main.py
-  wt_path: "/n/home06/tbush/gfp_function_prediction/data/outputs/original_out_with_kerneles/chunks_20251013_111729/41191729_2/boltz/test_input.fasta/boltz_results_test_input.fasta_prot_pipeline/predictions/test_input.fasta_prot_pipeline/test_input.fasta_prot_pipeline_model_0.cif"                       # Path to wild-type protein file (REQUIRED)
-  array_max_concurrency: 10        # Maximum concurrent ES array tasks
+  wt_path: /n/home06/tbush/test_input.fasta_prot_pipeline_model_0.cif
 

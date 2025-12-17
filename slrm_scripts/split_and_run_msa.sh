@@ -1,20 +1,24 @@
 #!/bin/bash
 set -euo pipefail
 
-# Usage: ./split_and_run_msa.sh INPUT_DIR N OUTPUT_PARENT_DIR [ARRAY_MAX_CONCURRENCY]
-# Example: ./split_and_run_msa.sh /data/fasta 5 /data/jobs 100
+# Usage: ./split_and_run_msa.sh INPUT_DIR MAX_FILES_PER_JOB OUTPUT_PARENT_DIR [ARRAY_MAX_CONCURRENCY]
+# Example: ./split_and_run_msa.sh /data/fasta 25 /data/jobs 100
 
 INPUT_DIR="${1:-}"
-N="${2:-}"
+MAX_FILES_PER_JOB="${2:-}"
 OUTPUT_PARENT_DIR="${3:-}"
 ARRAY_MAX_CONCURRENCY="${4:-100}"
 
-if [[ -z "${INPUT_DIR}" || -z "${N}" || -z "${OUTPUT_PARENT_DIR}" ]]; then
-  echo "Usage: $0 INPUT_DIR N OUTPUT_PARENT_DIR [ARRAY_MAX_CONCURRENCY]"
+if [[ -z "${INPUT_DIR}" || -z "${MAX_FILES_PER_JOB}" || -z "${OUTPUT_PARENT_DIR}" ]]; then
+  echo "Usage: $0 INPUT_DIR MAX_FILES_PER_JOB OUTPUT_PARENT_DIR [ARRAY_MAX_CONCURRENCY]"
+  echo "  INPUT_DIR: Directory containing .fasta or .fa files"
+  echo "  MAX_FILES_PER_JOB: Maximum number of .fasta files per array job"
+  echo "  OUTPUT_PARENT_DIR: Parent directory for output chunks"
+  echo "  ARRAY_MAX_CONCURRENCY: Maximum concurrent array tasks (default: 100)"
   exit 1
 fi
-if ! [[ "$N" =~ ^[0-9]+$ && "$N" -ge 1 ]]; then
-  echo "N must be a positive integer"
+if ! [[ "$MAX_FILES_PER_JOB" =~ ^[0-9]+$ && "$MAX_FILES_PER_JOB" -ge 1 ]]; then
+  echo "MAX_FILES_PER_JOB must be a positive integer"
   exit 1
 fi
 
@@ -37,13 +41,15 @@ if (( total == 0 )); then
   exit 1
 fi
 
-# Compute chunk size (ceil division)
-chunk_size=$(( (total + N - 1) / N ))
+# Calculate number of chunks needed (ceil division)
+NUM_CHUNKS=$(( (total + MAX_FILES_PER_JOB - 1) / MAX_FILES_PER_JOB ))
 
-# Split into N chunks (skip empties if N > total)
-for ((i=0; i<N; i++)); do
-  start=$(( i * chunk_size ))
-  end=$(( start + chunk_size ))
+echo "Creating ${NUM_CHUNKS} chunk files (max ${MAX_FILES_PER_JOB} files per chunk)..."
+
+# Create chunks with at most MAX_FILES_PER_JOB files each
+for ((i=0; i<NUM_CHUNKS; i++)); do
+  start=$(( i * MAX_FILES_PER_JOB ))
+  end=$(( start + MAX_FILES_PER_JOB ))
   (( end > total )) && end=$total
   (( start >= end )) && continue  # skip empty chunk
 
