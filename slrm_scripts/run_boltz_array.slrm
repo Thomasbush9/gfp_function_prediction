@@ -79,21 +79,58 @@ echo "  Recycling steps: ${BOLTZ_RECYCLING_STEPS}"
 echo "  Diffusion samples: ${BOLTZ_DIFFUSION_SAMPLES}"
 if ! boltz predict "$CHUNK_DIR" --cache "$BOLTZ_CACHE" --out_dir "$BOLTZ_OUTPUT_DIR" --devices $NUM_GPU_DEVICES --accelerator gpu --recycling_steps "$BOLTZ_RECYCLING_STEPS" --diffusion_samples "$BOLTZ_DIFFUSION_SAMPLES" --override; then
   echo "ERROR: Boltz prediction failed for chunk directory $CHUNK_DIR"
+  echo "ERROR: Task ${SLURM_ARRAY_TASK_ID} failed - no outputs will be tracked"
   exit 1
 fi
 
 echo "[$(date +%H:%M:%S)] Boltz prediction completed successfully"
 
+# Verify that outputs were created
+PREDICTIONS_DIR="${BOLTZ_OUTPUT_DIR}/boltz_results_$(basename "$CHUNK_DIR")/predictions"
+if [[ ! -d "$PREDICTIONS_DIR" ]]; then
+  echo "ERROR: Predictions directory not found after boltz predict: $PREDICTIONS_DIR"
+  echo "ERROR: Task ${SLURM_ARRAY_TASK_ID} failed - outputs missing for chunk directory $CHUNK_DIR"
+  exit 1
+fi
+
+# Count prediction subdirectories (one per sequence)
+PRED_COUNT=$(find "$PREDICTIONS_DIR" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')
+if (( PRED_COUNT == 0 )); then
+  echo "ERROR: No prediction subdirectories found in $PREDICTIONS_DIR"
+  echo "ERROR: Task ${SLURM_ARRAY_TASK_ID} failed - no predictions created for chunk directory $CHUNK_DIR"
+  exit 1
+fi
+
+echo "[$(date +%H:%M:%S)] Verified outputs: found ${PRED_COUNT} prediction directories"
+
 # Track successfully processed yaml files
 # Use file locking to avoid race conditions when multiple tasks write simultaneously
-(
-  flock -x 200
-  find "$CHUNK_DIR" -maxdepth 1 -name "*.yaml" -type f | while IFS= read -r yaml_file; do
-    echo "$yaml_file" >> "$PROCESSED_PATHS_FILE"
-  done
-) 200>"${PROCESSED_PATHS_FILE}.lock"
+LOCK_FILE="${PROCESSED_PATHS_FILE}.lock"
+LOCK_ACQUIRED=false
 
-rm -f "${PROCESSED_PATHS_FILE}.lock"
+# Attempt to acquire lock with retries
+for i in {1..10}; do
+  if (
+    flock -x -n 200
+    find "$CHUNK_DIR" -maxdepth 1 -name "*.yaml" -type f | while IFS= read -r yaml_file; do
+      echo "$yaml_file" >> "$PROCESSED_PATHS_FILE"
+    done
+  ) 200>"$LOCK_FILE"; then
+    LOCK_ACQUIRED=true
+    break
+  fi
+  sleep 0.5
+done
+
+# Clean up lock file only if it was created by this process
+if [[ -f "$LOCK_FILE" ]]; then
+  rm -f "$LOCK_FILE"
+fi
+
+if [[ "$LOCK_ACQUIRED" == "false" ]]; then
+  echo "WARNING: Could not acquire lock for processed_paths.txt after retries"
+  echo "WARNING: YAML files will not be marked as processed in tracking file"
+fi
 
 echo "==============================================="
 echo "[$(date +%H:%M:%S)] Task ${SLURM_ARRAY_TASK_ID} complete"

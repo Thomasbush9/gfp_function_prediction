@@ -44,7 +44,37 @@ def load_seq_(path: str, return_meta: bool = False, fasta: bool = True):
         # YAML: open, load, extract sequence
         with open(path, **open_args) as f:
             data = yaml.safe_load(f)
-            seq = data["sequences"][0]["protein"]["sequence"]
+        
+        if data is None:
+            raise ValueError(f"YAML file {path} is empty or could not be parsed")
+        
+        if "sequences" not in data:
+            available_keys = list(data.keys()) if isinstance(data, dict) else "not a dict"
+            raise KeyError(
+                f"YAML file {path} does not contain 'sequences' key. "
+                f"Available keys: {available_keys}. "
+                f"Full data structure: {data}"
+            )
+        
+        if not isinstance(data["sequences"], list) or len(data["sequences"]) == 0:
+            raise ValueError(
+                f"YAML file {path} has 'sequences' but it is not a non-empty list. "
+                f"Value: {data['sequences']}"
+            )
+        
+        if "protein" not in data["sequences"][0]:
+            raise KeyError(
+                f"YAML file {path} sequence entry does not contain 'protein' key. "
+                f"Available keys: {list(data['sequences'][0].keys())}"
+            )
+        
+        if "sequence" not in data["sequences"][0]["protein"]:
+            raise KeyError(
+                f"YAML file {path} protein entry does not contain 'sequence' key. "
+                f"Available keys: {list(data['sequences'][0]['protein'].keys())}"
+            )
+        
+        seq = data["sequences"][0]["protein"]["sequence"]
         mapping_db_seq = {str(i): i + 1 for i in range(len(seq))}
         # For YAML no meta info is available/meaningful for return_meta,
         # so just return two outputs regardless of return_meta

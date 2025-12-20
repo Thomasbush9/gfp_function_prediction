@@ -36,16 +36,48 @@ echo "==============================================="
 
 # Capture output to extract organize job ID
 BOLTZ_OUTPUT=$("$BOLTZ_SCRIPT" "$OUTPUT_DIR" "$MAX_FILES_PER_JOB" "$ARRAY_MAX_CONCURRENCY" "$BOLTZ_RECYCLING_STEPS" "$BOLTZ_DIFFUSION_SAMPLES")
+BOLTZ_EXIT_CODE=$?
+
 echo "$BOLTZ_OUTPUT"
 
-# Extract organize job ID from output (if present)
+if (( BOLTZ_EXIT_CODE != 0 )); then
+  echo "ERROR: split_and_run_boltz.sh exited with code ${BOLTZ_EXIT_CODE}"
+  exit "$BOLTZ_EXIT_CODE"
+fi
+
+# Extract organize job ID from output (try multiple patterns)
 ORGANIZE_JOB_ID=$(echo "$BOLTZ_OUTPUT" | grep -oP 'Submitted organize job \K[0-9]+' || echo "")
+
+# Fallback: try to extract from any line containing "organize" and a job ID
+if [[ -z "$ORGANIZE_JOB_ID" ]]; then
+  ORGANIZE_JOB_ID=$(echo "$BOLTZ_OUTPUT" | grep -i "organize.*job" | grep -oP '[0-9]+' | head -1 || echo "")
+fi
+
+ORGANIZE_JOB_ID_FILE="${OUTPUT_DIR}/.organize_boltz_job_id"
 
 # Write organize job ID to file if found (for ES job dependency)
 if [[ -n "$ORGANIZE_JOB_ID" ]]; then
-  ORGANIZE_JOB_ID_FILE="${OUTPUT_DIR}/.organize_boltz_job_id"
-  echo "$ORGANIZE_JOB_ID" > "$ORGANIZE_JOB_ID_FILE"
-  echo "Wrote organize job ID ${ORGANIZE_JOB_ID} to ${ORGANIZE_JOB_ID_FILE}"
+  if echo "$ORGANIZE_JOB_ID" > "$ORGANIZE_JOB_ID_FILE"; then
+    # Verify file was written correctly
+    if [[ -f "$ORGANIZE_JOB_ID_FILE" ]] && [[ -s "$ORGANIZE_JOB_ID_FILE" ]]; then
+      VERIFIED_ID=$(cat "$ORGANIZE_JOB_ID_FILE")
+      if [[ "$VERIFIED_ID" == "$ORGANIZE_JOB_ID" ]]; then
+        echo "Wrote organize job ID ${ORGANIZE_JOB_ID} to ${ORGANIZE_JOB_ID_FILE}"
+      else
+        echo "WARNING: Verification failed - wrote ${ORGANIZE_JOB_ID} but file contains ${VERIFIED_ID}"
+      fi
+    else
+      echo "WARNING: Organize job ID file was not created or is empty"
+    fi
+  else
+    echo "ERROR: Failed to write organize job ID to ${ORGANIZE_JOB_ID_FILE}"
+    exit 1
+  fi
+else
+  echo "WARNING: Could not extract organize job ID from boltz script output"
+  echo "WARNING: ES submitter may not be able to wait for organize job completion"
+  # Create empty file as a marker that we tried
+  touch "$ORGANIZE_JOB_ID_FILE"
 fi
 
 

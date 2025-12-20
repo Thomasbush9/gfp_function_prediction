@@ -24,6 +24,13 @@ fi
 
 CONFIG_FILE="${SCRIPT_DIR}/pipeline_config.yaml"
 
+# Completion marker file
+ORGANIZE_COMPLETE_FILE="${BASE_OUTPUT_DIR}/.organize_boltz_complete"
+ORGANIZE_SUCCESS_FILE="${BASE_OUTPUT_DIR}/.organize_boltz_success"
+
+# Remove any existing marker files
+rm -f "$ORGANIZE_COMPLETE_FILE" "$ORGANIZE_SUCCESS_FILE"
+
 echo "==============================================="
 echo "Organizing boltz outputs"
 echo "  Base output dir: $BASE_OUTPUT_DIR"
@@ -32,9 +39,24 @@ echo "  Config file: $CONFIG_FILE"
 echo "==============================================="
 
 # Pass both directories and config file: BOLTZ_CHUNKS_DIR contains boltz_output/, BASE_OUTPUT_DIR is where seq_idx/ dirs are
-"$ORGANIZE_SCRIPT" "$BASE_OUTPUT_DIR" "$BOLTZ_CHUNKS_DIR" "$CONFIG_FILE"
+ORGANIZE_EXIT_CODE=0
+"$ORGANIZE_SCRIPT" "$BASE_OUTPUT_DIR" "$BOLTZ_CHUNKS_DIR" "$CONFIG_FILE" || ORGANIZE_EXIT_CODE=$?
 
-echo "==============================================="
-echo "Boltz output organization complete"
-echo "==============================================="
+# Write completion marker regardless of success/failure
+touch "$ORGANIZE_COMPLETE_FILE"
+echo "$(date -Iseconds)" > "$ORGANIZE_COMPLETE_FILE"
+
+if (( ORGANIZE_EXIT_CODE == 0 )); then
+  # Write success marker
+  touch "$ORGANIZE_SUCCESS_FILE"
+  echo "$(date -Iseconds)" > "$ORGANIZE_SUCCESS_FILE"
+  echo "==============================================="
+  echo "Boltz output organization complete (SUCCESS)"
+  echo "==============================================="
+else
+  echo "==============================================="
+  echo "Boltz output organization complete (FAILED with exit code $ORGANIZE_EXIT_CODE)"
+  echo "==============================================="
+  exit "$ORGANIZE_EXIT_CODE"
+fi
 

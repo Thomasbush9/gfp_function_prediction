@@ -18,7 +18,7 @@
 set -euo pipefail 
 
 # Set HF model path (https://huggingface.co/deepseek-ai/DeepSeek-R1-0528-Qwen3-8B)
-HF_Model_Path="EvolutionaryScale/esmc-300m-2024-12"
+HF_Model_Path="EvolutionaryScale/esmc-600m-2024-12"
 
 # Load shared conda environment (no need to install on Kempner AI cluster)
 module load python/3.10.13-fasrc01

@@ -23,28 +23,87 @@ while squeue -j "${BOLTZ_WRAPPER_JOB_ID}" -h &>/dev/null; do
   sleep 5
 done
 
-# Wait a bit more for organize job ID file to be written
+echo "Boltz wrapper job ${BOLTZ_WRAPPER_JOB_ID} completed"
+
+# Poll for organize job ID file with timeout
+ORGANIZE_JOB_ID_FILE="${OUTPUT_DIR}/.organize_boltz_job_id"
+MAX_WAIT_TIME=300  # 5 minutes
+WAIT_INTERVAL=2
+ELAPSED_TIME=0
+
+echo "Waiting for organize job ID file..."
+while [[ ! -f "$ORGANIZE_JOB_ID_FILE" ]] && (( ELAPSED_TIME < MAX_WAIT_TIME )); do
+  sleep "$WAIT_INTERVAL"
+  ELAPSED_TIME=$((ELAPSED_TIME + WAIT_INTERVAL))
+done
+
+if [[ ! -f "$ORGANIZE_JOB_ID_FILE" ]]; then
+  echo "ERROR: Organize job ID file not found at ${ORGANIZE_JOB_ID_FILE} after ${MAX_WAIT_TIME} seconds"
+  echo "ERROR: Cannot determine organize job ID - ES submission aborted"
+  exit 1
+fi
+
+ORGANIZE_JOB_ID=$(cat "$ORGANIZE_JOB_ID_FILE")
+if [[ -z "$ORGANIZE_JOB_ID" ]]; then
+  echo "ERROR: Organize job ID file is empty at ${ORGANIZE_JOB_ID_FILE}"
+  echo "ERROR: Cannot determine organize job ID - ES submission aborted"
+  exit 1
+fi
+
+echo "Found organize job ID: ${ORGANIZE_JOB_ID}"
+
+# Wait for organize job to complete
+echo "Waiting for organize job ${ORGANIZE_JOB_ID} to complete..."
+MAX_WAIT_TIME=3600  # 1 hour max wait for organize
+ELAPSED_TIME=0
+while squeue -j "${ORGANIZE_JOB_ID}" -h &>/dev/null; do
+  if (( ELAPSED_TIME >= MAX_WAIT_TIME )); then
+    echo "ERROR: Organize job ${ORGANIZE_JOB_ID} did not complete within ${MAX_WAIT_TIME} seconds"
+    echo "ERROR: ES submission aborted"
+    exit 1
+  fi
+  sleep 10
+  ELAPSED_TIME=$((ELAPSED_TIME + 10))
+done
+
+echo "Organize job ${ORGANIZE_JOB_ID} completed"
+
+# Verify organize job succeeded
+ORGANIZE_SUCCESS_FILE="${OUTPUT_DIR}/.organize_boltz_success"
+ORGANIZE_COMPLETE_FILE="${OUTPUT_DIR}/.organize_boltz_complete"
+
+# Wait a bit for marker files to be written
 sleep 2
 
-# Read organize job ID from file
-ORGANIZE_JOB_ID_FILE="${OUTPUT_DIR}/.organize_boltz_job_id"
-if [[ -f "$ORGANIZE_JOB_ID_FILE" ]]; then
-  ORGANIZE_JOB_ID=$(cat "$ORGANIZE_JOB_ID_FILE")
-  echo "Found organize job ID: ${ORGANIZE_JOB_ID}"
-  
-  # Submit ES wrapper with dependency on organize job
-  ES_WRAPPER_JOB_ID=$(sbatch --parsable \
-    --dependency=afterok:${ORGANIZE_JOB_ID} \
-    --export=ALL,OUTPUT_DIR="$OUTPUT_DIR",SCRIPT_DIR="$SCRIPT_DIR",CONFIG_FILE="$CONFIG_FILE" \
-    "$ES_WRAPPER")
-  
-  echo "Submitted ES wrapper job ${ES_WRAPPER_JOB_ID} (depends on organize job ${ORGANIZE_JOB_ID})"
+# Poll for completion marker
+ELAPSED_TIME=0
+MAX_WAIT_MARKER=60  # 1 minute
+while [[ ! -f "$ORGANIZE_COMPLETE_FILE" ]] && (( ELAPSED_TIME < MAX_WAIT_MARKER )); do
+  sleep 2
+  ELAPSED_TIME=$((ELAPSED_TIME + 2))
+done
+
+if [[ ! -f "$ORGANIZE_COMPLETE_FILE" ]]; then
+  echo "WARNING: Organize completion marker not found, but proceeding with ES submission"
+  echo "WARNING: This may indicate organize job failed - ES may not have all CIF files"
+elif [[ ! -f "$ORGANIZE_SUCCESS_FILE" ]]; then
+  echo "ERROR: Organize job ${ORGANIZE_JOB_ID} completed but did not succeed"
+  echo "ERROR: Success marker not found at ${ORGANIZE_SUCCESS_FILE}"
+  echo "ERROR: ES submission aborted - organize job may have failed"
+  exit 1
 else
-  echo "WARNING: Organize job ID file not found at ${ORGANIZE_JOB_ID_FILE}, submitting ES job without dependency"
-  ES_WRAPPER_JOB_ID=$(sbatch --parsable \
-    --export=ALL,OUTPUT_DIR="$OUTPUT_DIR",SCRIPT_DIR="$SCRIPT_DIR",CONFIG_FILE="$CONFIG_FILE" \
-    "$ES_WRAPPER")
-  
-  echo "Submitted ES wrapper job ${ES_WRAPPER_JOB_ID}"
+  echo "Verified organize job ${ORGANIZE_JOB_ID} completed successfully"
 fi
+
+# Submit ES wrapper
+ES_WRAPPER_JOB_ID=$(sbatch --parsable \
+  --export=ALL,OUTPUT_DIR="$OUTPUT_DIR",SCRIPT_DIR="$SCRIPT_DIR",CONFIG_FILE="$CONFIG_FILE" \
+  "$ES_WRAPPER")
+
+if [[ -z "$ES_WRAPPER_JOB_ID" ]]; then
+  echo "ERROR: Failed to submit ES wrapper job"
+  exit 1
+fi
+
+echo "Submitted ES wrapper job ${ES_WRAPPER_JOB_ID} (organize job ${ORGANIZE_JOB_ID} completed successfully)"
 

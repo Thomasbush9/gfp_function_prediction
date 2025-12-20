@@ -22,6 +22,40 @@ WT_PATH="$(realpath "$WT_PATH")"
 ES_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ES_ARRAY_SCRIPT="${ES_SCRIPT_DIR}/run_es_array.slrm"
 
+# Check for organize completion marker
+ORGANIZE_SUCCESS_FILE="${ROOT_DIR}/.organize_boltz_success"
+ORGANIZE_COMPLETE_FILE="${ROOT_DIR}/.organize_boltz_complete"
+
+if [[ -f "$ORGANIZE_COMPLETE_FILE" ]]; then
+  if [[ -f "$ORGANIZE_SUCCESS_FILE" ]]; then
+    echo "Organize job completed successfully (verified by marker files)"
+  else
+    echo "WARNING: Organize job completed but success marker not found"
+    echo "WARNING: Proceeding with ES but some CIF files may be missing"
+  fi
+else
+  echo "WARNING: Organize completion marker not found at ${ORGANIZE_COMPLETE_FILE}"
+  echo "WARNING: Organize job may still be running or may have failed"
+  echo "WARNING: Waiting up to 60 seconds for organize to complete..."
+  
+  MAX_WAIT=60
+  ELAPSED=0
+  while [[ ! -f "$ORGANIZE_COMPLETE_FILE" ]] && (( ELAPSED < MAX_WAIT )); do
+    sleep 5
+    ELAPSED=$((ELAPSED + 5))
+  done
+  
+  if [[ -f "$ORGANIZE_SUCCESS_FILE" ]]; then
+    echo "Organize job completed successfully (verified after wait)"
+  elif [[ -f "$ORGANIZE_COMPLETE_FILE" ]]; then
+    echo "WARNING: Organize job completed but success marker not found"
+    echo "WARNING: Proceeding with ES but organize may have failed"
+  else
+    echo "WARNING: Organize completion marker still not found after ${MAX_WAIT} seconds"
+    echo "WARNING: Proceeding with ES - CIF files may be incomplete or missing"
+  fi
+fi
+
 # Two manifests: CIF inputs and future output CSVs
 CIF_MANIFEST="${ROOT_DIR}/cif_manifest.txt"
 OUT_MANIFEST="${ROOT_DIR}/out_manifest.txt"
@@ -54,8 +88,22 @@ done
 
 NUM_TASKS=$(wc -l < "$CIF_MANIFEST")
 if (( NUM_TASKS == 0 )); then
-  echo "No CIFs found; nothing to submit."
-  exit 0
+  echo "WARNING: No CIF files found; nothing to submit."
+  echo "WARNING: This may indicate:"
+  echo "  - Organize job has not completed yet"
+  echo "  - No Boltz predictions were generated"
+  echo "  - CIF files are in unexpected locations"
+  
+  # Check if there are any seq_ directories with boltz subdirectories
+  SEQ_DIRS_WITH_BOLTZ=$(find "$ROOT_DIR" -maxdepth 2 -type d -path "*/seq_*/boltz" | wc -l | tr -d ' ')
+  if (( SEQ_DIRS_WITH_BOLTZ == 0 )); then
+    echo "ERROR: No seq_*/boltz directories found - organize may not have run"
+    exit 1
+  else
+    echo "Found ${SEQ_DIRS_WITH_BOLTZ} seq_*/boltz directories but no CIF files"
+    echo "Exiting without submitting ES job"
+    exit 0
+  fi
 fi
 
 echo "Found $NUM_TASKS CIF files total."
