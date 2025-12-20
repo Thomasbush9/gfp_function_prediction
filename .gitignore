@@ -1,6 +1,7 @@
 # Ignore all contents of data/, except test_input.pt
 data/*
 !data/test_input.yaml
+!data/GABRB3.yaml
 
 # Ignore the entire outputs/ directory
 outputs/
