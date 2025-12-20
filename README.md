@@ -174,9 +174,14 @@ The data will be:
 - Effective strain (N, residues, 1)
 - adj_matrix (N, residues, residues)
 
+### Important note on the ESM-C embeddings:
 
-## TODO:
+Currently, the only way to run them using a local path is to modify the source script by doing: 
 
-- Test models with more data
-- Run effective strain with same sequence, test it with other models
-- clean the repository
+- vim env/esm/lib/python3.12/site-packages/esm/utils/constants/esm3.py
+ def data_root(): 
+     if "INFRA_PROVIDER" in os.environ: 
+         return Path("") 
+     # Try to download from hugginface if it doesn't exist 
+     path = Path(snapshot_download(repo_id="EvolutionaryScale/esm3-sm-open-v1")) 
+     return path 
