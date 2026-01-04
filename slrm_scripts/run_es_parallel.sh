@@ -56,4 +56,4 @@ END {
   xargs -r realpath >"$ROOT_DIR/paths.txt"
 
 cd "$SCRIPT_DIR"
-srun python main.py --parallel True --protA "$WT_PATH" --path_list "$ROOT_DIR/paths.txt" --out_dir "$ROOT_DIR" --method all --min_plddt 70 --lddt_cutoffs 0.125 0.25 0.5 1
+srun --export=ALL "$CONDA_PREFIX/bin/python" main.py --parallel True --protA "$WT_PATH" --path_list "$ROOT_DIR/paths.txt" --out_dir "$ROOT_DIR" --method all --min_plddt 70 --lddt_cutoffs 0.125 0.25 0.5 1
