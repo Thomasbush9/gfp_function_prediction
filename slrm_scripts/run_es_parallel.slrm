@@ -34,26 +34,7 @@ WT_PATH="$(realpath "$WT_PATH")"
 # Get directory containing this script (slrm_scripts directory)
 ES_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ES_ARRAY_SCRIPT="${ES_SCRIPT_DIR}/run_es_array.slrm"
-find "$ROOT_DIR" -type f -name "*.cif" -printf "%p\n" |
-  awk -F'[_/]' '
-{
-  seq = $NF;               # filename
-  match(seq, /seq_[0-9]+/);
-  seq_id = substr(seq, RSTART, RLENGTH);
 
-  match(seq, /model_[0-9]+/);
-  model = substr(seq, RSTART+6, RLENGTH-6);
-
-  if (!(seq_id in max) || model > max[seq_id]) {
-    max[seq_id] = model;
-    file[seq_id] = $0;
-  }
-}
-END {
-  for (s in file)
-    print file[s];
-}' |
-  xargs -r realpath >"$ROOT_DIR/paths.txt"
-
+find ROOT_DIR -name "*.cif" -type f -exec realpath {} \; >"$ROOT_DIR/paths.txt"
 cd "$SCRIPT_DIR"
 srun --export=ALL "$CONDA_PREFIX/bin/python" main.py --parallel True --protA "$WT_PATH" --path_list "$ROOT_DIR/paths.txt" --out_dir "$ROOT_DIR" --method all --min_plddt 70 --lddt_cutoffs 0.125 0.25 0.5 1
