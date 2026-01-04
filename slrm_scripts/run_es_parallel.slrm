@@ -29,7 +29,7 @@ WT_PATH="${3:-}"
 
 ROOT_DIR="$(realpath "$ROOT_DIR")"
 OUTPUT_DIR="$ROOT_DIR/es/"
-mkdr -p "$OUTPUT_DIR"
+mkdir -p "$OUTPUT_DIR"
 echo "Created new output directory: $OUTPUT_DIR"
 SCRIPT_DIR="$(realpath "$SCRIPT_DIR")"
 WT_PATH="$(realpath "$WT_PATH")"
@@ -38,4 +38,4 @@ WT_PATH="$(realpath "$WT_PATH")"
 find $ROOT_DIR -name "*.cif" -type f -exec realpath {} \; >"$ROOT_DIR/paths.txt"
 cd "$SCRIPT_DIR"
 #TODO: check whether it's appropriate to call srun form inside the.
-srun --export=ALL "$CONDA_PREFIX/bin/python" -u main.py --parallel True --protA "$WT_PATH" --path_list "$ROOT_DIR/paths.txt" --out_dir "$OUTPUT_DIR" --method all --min_plddt 70 --lddt_cutoffs 0.125 0.25 0.5 1
+mpiexec -n 16 python main.py --parallel True --protA "$WT_PATH" --path_list "$ROOT_DIR/paths.txt" --out_dir "$OUTPUT_DIR" --method all --min_plddt 70 --lddt_cutoffs 0.125 0.25 0.5 1
