@@ -28,13 +28,15 @@ SCRIPT_DIR="${2:-}"
 WT_PATH="${3:-}"
 
 ROOT_DIR="$(realpath "$ROOT_DIR")"
+OUTPUT_DIR="$ROOT_DIR/es/"
+mkdr OUTPUT_DIR
 SCRIPT_DIR="$(realpath "$SCRIPT_DIR")"
 WT_PATH="$(realpath "$WT_PATH")"
 
 # Get directory containing this script (slrm_scripts directory)
 ES_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ES_ARRAY_SCRIPT="${ES_SCRIPT_DIR}/run_es_array.slrm"
-
+#TODO: find all unique for the last cycle of boltz
 find ROOT_DIR -name "*.cif" -type f -exec realpath {} \; >"$ROOT_DIR/paths.txt"
 cd "$SCRIPT_DIR"
-srun --export=ALL "$CONDA_PREFIX/bin/python" main.py --parallel True --protA "$WT_PATH" --path_list "$ROOT_DIR/paths.txt" --out_dir "$ROOT_DIR" --method all --min_plddt 70 --lddt_cutoffs 0.125 0.25 0.5 1
+srun --export=ALL "$CONDA_PREFIX/bin/python" main.py --parallel True --protA "$WT_PATH" --path_list "$ROOT_DIR/paths.txt" --out_dir "$OUTPUT_DIR" --method all --min_plddt 70 --lddt_cutoffs 0.125 0.25 0.5 1
