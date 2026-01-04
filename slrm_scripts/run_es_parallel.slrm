@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --nodes=1
-#SBATCH --ntasks-per-node=1
-#SBATCH --cpus-per-task=16
+#SBATCH --ntasks-per-node=16
+#SBATCH --cpus-per-task=1
 #SBATCH --gpus-per-node=1
 #SBATCH --mem=16GB
 #SBATCH --partition=kempner_requeue
@@ -17,7 +17,7 @@ export MKL_NUM_THREADS="$SLURM_CPUS_PER_TASK"
 export OPENBLAS_NUM_THREADS="$SLURM_CPUS_PER_TASK"
 
 # --- Load modules ---
-module load python/3.12.8-fasrc01 gcc/14.2.0-fasrc01
+module load python/3.12.8-fasrc01 gcc/14.2.0-fasrc01 openmpi
 source "$(conda info --base)/etc/profile.d/conda.sh"
 # prefer prefix activation
 ES_ENV_PREFIX="${ES_ENV_PREFIX:-/n/home06/tbush/envs/es-analysis}"
@@ -28,32 +28,14 @@ SCRIPT_DIR="${2:-}"
 WT_PATH="${3:-}"
 
 ROOT_DIR="$(realpath "$ROOT_DIR")"
+OUTPUT_DIR="$ROOT_DIR/es/"
+mkdr -p "$OUTPUT_DIR"
+echo "Created new output directory: $OUTPUT_DIR"
 SCRIPT_DIR="$(realpath "$SCRIPT_DIR")"
 WT_PATH="$(realpath "$WT_PATH")"
 
-# Get directory containing this script (slrm_scripts directory)
-ES_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ES_ARRAY_SCRIPT="${ES_SCRIPT_DIR}/run_es_array.slrm"
-find "$ROOT_DIR" -type f -name "*.cif" -printf "%p\n" |
-  awk -F'[_/]' '
-{
-  seq = $NF;               # filename
-  match(seq, /seq_[0-9]+/);
-  seq_id = substr(seq, RSTART, RLENGTH);
-
-  match(seq, /model_[0-9]+/);
-  model = substr(seq, RSTART+6, RLENGTH-6);
-
-  if (!(seq_id in max) || model > max[seq_id]) {
-    max[seq_id] = model;
-    file[seq_id] = $0;
-  }
-}
-END {
-  for (s in file)
-    print file[s];
-}' |
-  xargs -r realpath >"$ROOT_DIR/paths.txt"
-
+#TODO: find all unique for the last cycle of boltz
+find $ROOT_DIR -name "*.cif" -type f -exec realpath {} \; >"$ROOT_DIR/paths.txt"
 cd "$SCRIPT_DIR"
-srun --export=ALL "$CONDA_PREFIX/bin/python" main.py --parallel True --protA "$WT_PATH" --path_list "$ROOT_DIR/paths.txt" --out_dir "$ROOT_DIR" --method all --min_plddt 70 --lddt_cutoffs 0.125 0.25 0.5 1
+#TODO: check whether it's appropriate to call srun form inside the.
+srun --export=ALL "$CONDA_PREFIX/bin/python" -u main.py --parallel True --protA "$WT_PATH" --path_list "$ROOT_DIR/paths.txt" --out_dir "$OUTPUT_DIR" --method all --min_plddt 70 --lddt_cutoffs 0.125 0.25 0.5 1

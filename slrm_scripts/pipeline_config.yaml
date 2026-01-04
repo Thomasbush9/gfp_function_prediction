@@ -8,7 +8,7 @@ output:
 
 # MSA (Multiple Sequence Alignment) generation settings
 msa:
-  max_files_per_job: 40            # Maximum number of .fasta files per MSA array job
+  max_files_per_job: 50            # Maximum number of .fasta files per MSA array job
   array_max_concurrency: 10       # Maximum concurrent MSA array tasks
 
 # Boltz structure prediction settings
