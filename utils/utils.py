@@ -2,11 +2,34 @@ import os
 import re
 from pathlib import Path
 from typing import Literal, Optional
-
+import random
 import numpy as np
 import pandas as pd
 import yaml
 from tqdm import tqdm
+
+AMINO_ACIDS_20 = [
+    "A",  # Alanine
+    "R",  # Arginine
+    "N",  # Asparagine
+    "D",  # Aspartic acid
+    "C",  # Cysteine
+    "E",  # Glutamic acid
+    "Q",  # Glutamine
+    "G",  # Glycine
+    "H",  # Histidine
+    "I",  # Isoleucine
+    "L",  # Leucine
+    "K",  # Lysine
+    "M",  # Methionine
+    "F",  # Phenylalanine
+    "P",  # Proline
+    "S",  # Serine
+    "T",  # Threonine
+    "W",  # Tryptophan
+    "Y",  # Tyrosine
+    "V",  # Valine
+]
 
 
 def load_dataset(path: str, sep: None) -> pd.DataFrame:
@@ -506,3 +529,28 @@ def converter(path: str, src: Literal["fasta", "yaml"]):
             else:
                 continue
         print(f"Directory {path} correctly converted")
+
+#=== Functions to generate test data for GABRB3: 
+
+def random_aa_except(exclude, amino_acids=AMINO_ACIDS_20):
+    i = random.randrange(len(amino_acids) - 1)
+    return amino_acids[i] if amino_acids[i] != exclude else amino_acids[-1]
+
+def generate_mutation_dataset(seq:str, n:int)-> pd.DataFrame:
+
+    mutations = []
+    for i in range(0, n):
+        idx = random.choice(range(0, len(seq)))
+        src = seq[idx]
+        aa = random_aa_except(src)
+        mutations.append(f"S{src}{idx}{aa}")
+
+    return pd.DataFrame({"aaMutations":mutations})
+
+
+
+
+
+
+
+    pass
