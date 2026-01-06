@@ -319,7 +319,7 @@ def balanced_sampling(
 
 
 # === Generate Data Functions ===
-def genkerate_yaml_data(dataset: pd.DataFrame, msa, training_data_dir, data_dir):
+def generate_yaml_data(dataset: pd.DataFrame, msa, training_data_dir, data_dir):
     """
     Function to generate yaml data for Boltz Predictions.
 

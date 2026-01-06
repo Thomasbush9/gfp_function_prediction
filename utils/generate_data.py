@@ -7,7 +7,7 @@ import pandas as pd
 import yaml
 from tqdm import tqdm
 
-from utils import (
+from .utils import (
     generate_cluster_fasta,
     generate_fasta_data,
     generate_yaml_data,
@@ -35,7 +35,10 @@ if __name__ == "__main__":
     original_seq_path = args.original
     dataset_path = args.data
     mode = args.file_type
-    seq, mapping = load_seq_(original_seq_path)
+    if original_seq_path.endswith(".yaml"):
+        seq, mapping = load_seq_(original_seq_path, fasta=False)
+    else:
+        seq, mapping = load_seq_(original_seq_path)
     dataset = load_dataset(dataset_path, sep="\t")
     dataset["seq_mutated"] = dataset["aaMutations"].apply(
         lambda muts: mutate_sequence(muts, seq=seq, mapping_db_seq=mapping)
