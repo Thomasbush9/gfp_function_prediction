@@ -3,7 +3,7 @@
 #SBATCH --ntasks-per-node=16
 #SBATCH --cpus-per-task=1
 #SBATCH --gpus-per-node=1
-#SBATCH --mem=16GB
+#SBATCH --mem=8GB
 #SBATCH --partition=kempner_requeue
 #SBATCH --account=kempner_bsabatini_lab
 #SBATCH --time=00:30:00
@@ -34,8 +34,21 @@ echo "Created new output directory: $OUTPUT_DIR"
 SCRIPT_DIR="$(realpath "$SCRIPT_DIR")"
 WT_PATH="$(realpath "$WT_PATH")"
 
-#TODO: find all unique for the last cycle of boltz
-find $ROOT_DIR -name "*.cif" -type f -exec realpath {} \; >"$ROOT_DIR/paths.txt"
+find $ROOT_DIR -name "*.cif" -type f -print |
+  awk -F'[-_/|.]' '
+{
+  n = $9
+  s = $5
+  if (!(s in best) || n > best[s]) {
+    best[s] = n
+    bestfile[s] = $0
+  }
+}
+END {
+  for (s in best)
+    print bestfile[s]
+}
+' | xargs realpath >"$ROOT_DIR/paths.txt"
+
 cd "$SCRIPT_DIR"
-#TODO: check whether it's appropriate to call srun form inside the.
 mpiexec -n 16 python main.py --parallel True --protA "$WT_PATH" --path_list "$ROOT_DIR/paths.txt" --out_dir "$OUTPUT_DIR" --method all --min_plddt 70 --lddt_cutoffs 0.125 0.25 0.5 1

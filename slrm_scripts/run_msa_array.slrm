@@ -45,12 +45,12 @@ echo "Outputs -> ${BASE_OUTPUT_DIR}"
 echo "Threads -> ${THREADS}"
 
 # Count files to process
-NUM_FILES=$(wc -l < "$LIST_FILE" | tr -d ' ')
+NUM_FILES=$(wc -l <"$LIST_FILE" | tr -d ' ')
 echo "Processing ${NUM_FILES} FASTA files in batch mode"
 
 # Create temporary combined FASTA file
 COMBINED_FASTA="${TMPDIR}/combined_${SLURM_ARRAY_TASK_ID}.fasta"
-: > "$COMBINED_FASTA"
+: >"$COMBINED_FASTA"
 
 # Track sequence order and mappings for output organization
 declare -a SEQUENCE_ORDER
@@ -62,29 +62,29 @@ SEQ_INDEX=0
 # Combine all FASTA files into one multi-sequence file
 while IFS= read -r INPUT_FASTA; do
   [[ -z "$INPUT_FASTA" ]] && continue
-  
+
   if [[ ! -f "$INPUT_FASTA" ]]; then
     echo "WARNING: File not found: $INPUT_FASTA" >&2
     continue
   fi
-  
+
   BASENAME=$(basename "$INPUT_FASTA" .fa)
   BASENAME=$(basename "$BASENAME" .fasta)
-  
+
   # Read header to track which sequence belongs to which file
   HEADER=$(head -n1 "$INPUT_FASTA")
   PROTEIN_PREFIX=$(echo "$HEADER" | sed 's/^>//' | sed 's/|/_/g')
-  
+
   # Store mappings
   SEQUENCE_ORDER+=("$PROTEIN_PREFIX")
   PREFIX_TO_BASENAME["$PROTEIN_PREFIX"]="$BASENAME"
   PREFIX_TO_INPUT_FILE["$PROTEIN_PREFIX"]="$INPUT_FASTA"
-  
+
   # Append to combined FASTA
-  cat "$INPUT_FASTA" >> "$COMBINED_FASTA"
+  cat "$INPUT_FASTA" >>"$COMBINED_FASTA"
   ((SEQ_INDEX++)) || true
-  
-done < "$LIST_FILE"
+
+done <"$LIST_FILE"
 
 if [[ ! -s "$COMBINED_FASTA" ]]; then
   echo "ERROR: No valid FASTA files found in $LIST_FILE"
@@ -106,7 +106,7 @@ echo "  Threads: $THREADS, GPU: enabled"
 echo "==============================================="
 
 # Verify GPU is available
-if command -v nvidia-smi &> /dev/null; then
+if command -v nvidia-smi &>/dev/null; then
   echo "GPU Status:"
   nvidia-smi --query-gpu=index,name,memory.total,memory.free --format=csv,noheader || true
 fi
@@ -123,6 +123,7 @@ echo "[$(date +%H:%M:%S)] ColabFold search completed, organizing output files...
 
 # STEP 2: Organize output a3m files to correct sequence directories
 # Get all a3m files in order (colabfold_search typically creates them in sequence order)
+# so we map it to access it later
 mapfile -t A3M_FILES < <(find "$TEMP_OUTPUT_DIR" -name "*.a3m" -type f | sort)
 
 PROCESSED_COUNT=0
@@ -130,12 +131,12 @@ for i in "${!SEQUENCE_ORDER[@]}"; do
   PROTEIN_PREFIX="${SEQUENCE_ORDER[$i]}"
   BASENAME="${PREFIX_TO_BASENAME[$PROTEIN_PREFIX]}"
   INPUT_FASTA="${PREFIX_TO_INPUT_FILE[$PROTEIN_PREFIX]}"
-  
+
   SEQ_DIR="${BASE_OUTPUT_DIR}/${BASENAME}"
   COLABFOLD_OUTPUT_DIR="${SEQ_DIR}/msa"
-  
+
   mkdir -p "$COLABFOLD_OUTPUT_DIR"
-  
+
   # Try to find a3m file by exact prefix match first
   A3M_FILE="${TEMP_OUTPUT_DIR}/${PROTEIN_PREFIX}.a3m"
   if [ ! -f "$A3M_FILE" ]; then
@@ -149,11 +150,11 @@ for i in "${!SEQUENCE_ORDER[@]}"; do
       fi
     fi
   fi
-  
+
   if [[ -n "$A3M_FILE" && -f "$A3M_FILE" ]]; then
     # Copy a3m file to sequence directory
     cp "$A3M_FILE" "$COLABFOLD_OUTPUT_DIR/"
-    
+
     # Also copy any related files (e.g., .sto, .hhr, etc.) with same basename
     A3M_BASENAME=$(basename "$A3M_FILE" .a3m)
     for related_file in "$TEMP_OUTPUT_DIR"/${A3M_BASENAME}.*; do
@@ -161,7 +162,7 @@ for i in "${!SEQUENCE_ORDER[@]}"; do
         cp "$related_file" "$COLABFOLD_OUTPUT_DIR/" 2>/dev/null || true
       fi
     done
-    
+
     echo "[$(date +%H:%M:%S)] Organized MSA for $BASENAME: $(basename "$A3M_FILE")"
     ((PROCESSED_COUNT++)) || true
   else
@@ -186,8 +187,8 @@ done
 if [[ "$LOCK_ACQUIRED" == "true" ]]; then
   while IFS= read -r INPUT_FASTA; do
     [[ -z "$INPUT_FASTA" ]] && continue
-    echo "$INPUT_FASTA" >> "$PROCESSED_PATHS_FILE"
-  done < "$LIST_FILE"
+    echo "$INPUT_FASTA" >>"$PROCESSED_PATHS_FILE"
+  done <"$LIST_FILE"
   rmdir "$PROCESSED_PATHS_LOCK_DIR" 2>/dev/null || true
   trap - EXIT
 else
@@ -209,31 +210,30 @@ POST_PROCESS_LOCK_DIR="${BASE_OUTPUT_DIR}/post_process.lockdir"
 POST_PROCESS_DONE="${BASE_OUTPUT_DIR}/post_process.done"
 
 if [[ ! -f "$POST_PROCESS_DONE" ]]; then
-  # Try to acquire lock using mkdir (atomic operation, more reliable)
   if mkdir "$POST_PROCESS_LOCK_DIR" 2>/dev/null; then
     echo "[$(date +%H:%M:%S)] Task ${SLURM_ARRAY_TASK_ID} acquired lock for post-processing"
-    
+
     # Wait to ensure all other tasks have finished writing their outputs
     sleep 10
-    
+
     # Double-check we still have the lock and post-processing isn't done
     if [[ -d "$POST_PROCESS_LOCK_DIR" ]] && [[ ! -f "$POST_PROCESS_DONE" ]]; then
       # Use exported SCRIPT_DIR or fallback to computing it
       SCRIPT_DIR="${SCRIPT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
       PROCESS_SCRIPT="${SCRIPT_DIR}/process_msa_fasta.sh"
       ORIGINAL_FASTA_DIR="${ORIGINAL_FASTA_DIR:-}"
-      
+
       echo "[$(date +%H:%M:%S)] Post-processing check:"
       echo "  SCRIPT_DIR: ${SCRIPT_DIR}"
       echo "  PROCESS_SCRIPT: ${PROCESS_SCRIPT}"
       echo "  ORIGINAL_FASTA_DIR: ${ORIGINAL_FASTA_DIR}"
       echo "  PROCESS_SCRIPT exists: $([ -f "$PROCESS_SCRIPT" ] && echo 'YES' || echo 'NO')"
-      
+
       if [[ -n "$ORIGINAL_FASTA_DIR" && -f "$PROCESS_SCRIPT" ]]; then
         echo "[$(date +%H:%M:%S)] Running post-processing: converting FASTA to YAML..."
         echo "  Original FASTA dir: $ORIGINAL_FASTA_DIR"
         echo "  Output dir: $BASE_OUTPUT_DIR"
-        
+
         if "$PROCESS_SCRIPT" "$ORIGINAL_FASTA_DIR" "$BASE_OUTPUT_DIR"; then
           touch "$POST_PROCESS_DONE"
           echo "[$(date +%H:%M:%S)] Post-processing completed successfully"
@@ -244,9 +244,9 @@ if [[ ! -f "$POST_PROCESS_DONE" ]]; then
         echo "WARNING: ORIGINAL_FASTA_DIR not set or process script not found, skipping post-processing"
         echo "  ORIGINAL_FASTA_DIR empty: $([ -z "$ORIGINAL_FASTA_DIR" ] && echo 'YES' || echo 'NO')"
         echo "  PROCESS_SCRIPT exists: $([ -f "$PROCESS_SCRIPT" ] && echo 'YES' || echo 'NO')"
-        touch "$POST_PROCESS_DONE"  # Mark as done to avoid retries
+        touch "$POST_PROCESS_DONE" # Mark as done to avoid retries
       fi
-      
+
       # Release lock
       rmdir "$POST_PROCESS_LOCK_DIR" 2>/dev/null || true
     else
@@ -259,5 +259,3 @@ if [[ ! -f "$POST_PROCESS_DONE" ]]; then
 else
   echo "[$(date +%H:%M:%S)] Post-processing already completed (skipping)"
 fi
-
-
