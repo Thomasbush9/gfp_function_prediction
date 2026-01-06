@@ -202,43 +202,9 @@ if [[ -f "$CHECKER_BOLTZ_SCRIPT" ]]; then
 fi
 echo ""
 
-# Step 3: Launch ES analysis job after organize_boltz completes
-ES_WRAPPER="${SCRIPT_DIR}/run_es_wrapper.slrm"
-ES_SUBMITTER="${SCRIPT_DIR}/run_es_submitter.slrm"
-ES_JOB_ID=""
+ES_SCRIPT="$SCRIPT_DIR/run_es_parallel.slrm"
 
-if [[ -f "$ES_WRAPPER" ]] && [[ -f "$ES_SUBMITTER" ]] && [[ -n "$ES_SCRIPT_DIR" ]] && [[ -n "$ES_WT_PATH" ]]; then
-  echo "Step 3: Setting up ES analysis (will run after boltz organize completes)..."
-
-  ES_SUBMITTER_JOB_ID=$(sbatch --parsable \
-    --dependency=afterok:${BOLTZ_JOB_ID} \
-    --export=ALL,OUTPUT_DIR="$OUTPUT_DIR",BOLTZ_WRAPPER_JOB_ID="$BOLTZ_JOB_ID",SCRIPT_DIR="$SCRIPT_DIR",CONFIG_FILE="$CONFIG_FILE",ES_WRAPPER="$ES_WRAPPER" \
-    "$ES_SUBMITTER")
-
-  if [[ -n "$ES_SUBMITTER_JOB_ID" ]]; then
-    ES_JOB_ID="$ES_SUBMITTER_JOB_ID"
-    echo "  ES submitter job ID: ${ES_SUBMITTER_JOB_ID} (will submit ES wrapper after organize_boltz completes)"
-
-    # Submit ES checker job (runs only if ES submitter job fails)
-    # Note: This will check both Boltz and ES outputs since checker_boltz.sh handles both
-    if [[ -f "$CHECKER_BOLTZ_SCRIPT" ]]; then
-      CHECKER_ES_JOB_ID=$(sbatch --parsable \
-        --dependency=afternotok:${ES_JOB_ID} \
-        --export=ALL,OUTPUT_DIR="$OUTPUT_DIR",SCRIPT_DIR="$SCRIPT_DIR" \
-        "$CHECKER_BOLTZ_SCRIPT" 2>/dev/null || echo "")
-      if [[ -n "$CHECKER_ES_JOB_ID" ]]; then
-        echo "  ES checker job ID: ${CHECKER_ES_JOB_ID} (will run if ES job fails)"
-      fi
-    fi
-  else
-    echo "  WARNING: Failed to submit ES submitter job"
-  fi
-elif [[ -z "$ES_SCRIPT_DIR" ]] || [[ -z "$ES_WT_PATH" ]]; then
-  echo "Step 3: Skipping ES analysis (missing configuration: script_dir or wt_path)"
-else
-  echo "Step 3: Skipping ES analysis (wrapper or submitter script not found)"
-fi
-echo ""
+ES_JOB_ID=$(sbatch "$ES_SCRIPT" "$OUTPUT_DIR" "$ES_SCRIPT_DIR" "$ES_WT_PATH")
 
 echo "==============================================="
 echo "All jobs submitted successfully:"
@@ -253,12 +219,6 @@ fi
 echo "  Boltz job: ${BOLTZ_JOB_ID} (depends on MSA job, runs in parallel with ESM)"
 if [[ -n "${CHECKER_BOLTZ_JOB_ID:-}" ]]; then
   echo "    Checker: ${CHECKER_BOLTZ_JOB_ID} (runs if Boltz job fails, checks both Boltz and ES)"
-fi
-if [[ -n "$ES_JOB_ID" ]]; then
-  echo "  ES submitter job: ${ES_JOB_ID} (depends on Boltz job, will submit ES wrapper after organize completes)"
-  if [[ -n "${CHECKER_ES_JOB_ID:-}" ]]; then
-    echo "    Checker: ${CHECKER_ES_JOB_ID} (runs if ES job fails, checks both Boltz and ES)"
-  fi
 fi
 echo "==============================================="
 echo ""
