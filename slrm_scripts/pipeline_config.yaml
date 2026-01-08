@@ -1,5 +1,5 @@
 input:
-  fasta_dir: /n/home06/tbush/gfp_function_prediction/data/20250815_102358_subsample/subsample
+  fasta_dir: /n/home06/tbush/gfp_function_prediction/data/20260106_141959/training_data
   # fasta_dir: /n/home06/tbush/gfp_function_prediction/data/20250815_102358_subsample/subsample
 
 # Output parent directory where all results will be stored
@@ -8,7 +8,7 @@ output:
 
 # MSA (Multiple Sequence Alignment) generation settings
 msa:
-  max_files_per_job: 50            # Maximum number of .fasta files per MSA array job
+  max_files_per_job: 25           # Maximum number of .fasta files per MSA array job
   array_max_concurrency: 10       # Maximum concurrent MSA array tasks
 
 # Boltz structure prediction settings
