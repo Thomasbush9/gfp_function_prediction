@@ -15,7 +15,6 @@ if __name__ == "__main__":
     seq, _ = load_seq_(args.seq, fasta=False)
     df = generate_mutation_dataset(seq, args.n)
     df.to_csv(Path(args.out_path)/"GARBRB3.csv", seq="\t")
-    
 
 
 
