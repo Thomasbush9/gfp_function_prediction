@@ -14,7 +14,11 @@ if __name__ == "__main__":
     args = parser.parse_args()
     seq, _ = load_seq_(args.seq, fasta=False)
     df = generate_mutation_dataset(seq, args.n)
+<<<<<<< HEAD
     df.to_csv(Path(args.out_path)/"GABRB3.csv", sep="\t")
+=======
+    df.to_csv(Path(args.out_path)/"GARBRB3.csv", seq="\t")
+>>>>>>> fec8839ade7b07a115dbceb997995ca9aa090dd5
     
 
 

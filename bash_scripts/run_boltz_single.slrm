@@ -1,0 +1,215 @@
+#!/bin/bash
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=1
+#SBATCH --cpus-per-task=16
+#SBATCH --gpus-per-node=1
+#SBATCH --mem=32GB
+#SBATCH --partition=kempner_requeue
+#SBATCH --account=kempner_bsabatini_lab 
+#SBATCH --time=1:00:00
+#SBATCH --output=gpu_boltz_pipeline-%N.%x.%j.out
+#SBATCH --error=gpu_boltz_pipeline%N.%x.%j.err
+
+# ==========================================
+# BOLTZ PIPELINE - Single SLURM Script
+# ==========================================
+
+# Define Variables
+INPUT_FASTA=$1
+COLABFOLD_OUTPUT_DIR="Output_colabfold/local_search_gpu"
+TEMP_FASTA="prot_pipeline.fasta"
+BOLTZ_OUTPUT_DIR="Output_boltz/prot_pipeline_gpu"
+
+THREADS=$SLURM_CPUS_PER_TASK 
+# Set GPU specifications for mmseq2 and boltz calculations
+export CUDA_VISIBLE_DEVICES=0
+export NUM_GPU_DEVICES=1
+
+MMSEQ2_DB="/n/holylfs06/LABS/kempner_shared/Everyone/workflow/boltz/mmseq2_db"
+BOLTZ_CACHE="/n/holylfs06/LABS/kempner_shared/Everyone/workflow/boltz/boltz_db"
+
+echo "==============================================="
+echo "BOLTZ PIPELINE STARTED"
+echo "==============================================="
+echo "Input FASTA: $INPUT_FASTA"
+echo "ColabFold Output: $COLABFOLD_OUTPUT_DIR"
+echo "Boltz Output: $BOLTZ_OUTPUT_DIR"
+echo "==============================================="
+
+# Load modules
+echo "Loading modules..."
+module load python/3.12.8-fasrc01 gcc/14.2.0-fasrc01 cuda/12.9.1-fasrc01 cudnn/9.10.2.21_cuda12-fasrc01
+
+# Set up ColabFold environment
+export PATH="/n/holylfs06/LABS/kempner_shared/Everyone/common_envs/miniconda3/envs/boltz/localcolabfold/colabfold-conda/bin:$PATH"
+export COLABFOLD_DB=/n/holylfs06/LABS/kempner_shared/Everyone/workflow/boltz/colabfold_db
+
+
+# ==========================================
+# STEP 1: ColabFold Search
+# ==========================================
+echo ""
+echo "STEP 1: Running ColabFold search..."
+echo "----------------------------------------"
+
+# Create output directory if it doesn't exist
+mkdir -p "$COLABFOLD_OUTPUT_DIR"
+
+# Start timing
+start=$(date +%s)
+
+echo "Command: colabfold_search $INPUT_FASTA $MMSEQ2_DB $COLABFOLD_OUTPUT_DIR --thread $THREADS --gpu 1"
+
+# Run ColabFold search
+colabfold_search "$INPUT_FASTA" "$MMSEQ2_DB" "$COLABFOLD_OUTPUT_DIR" --thread "$THREADS" --gpu 1
+
+# Check if ColabFold search succeeded
+if [ $? -ne 0 ]; then
+    echo "ERROR: ColabFold search failed!"
+    exit 1
+fi
+
+# Calculate ColabFold runtime
+colab_end=$(date +%s)
+colab_runtime=$((colab_end - start))
+colab_hours=$(echo "scale=2; $colab_runtime/3600" | bc)
+
+echo "ColabFold search completed successfully!"
+echo "ColabFold runtime: $colab_runtime seconds (${colab_hours} hours)"
+
+# ==========================================
+# STEP 2: Find and verify a3m file
+# ==========================================
+echo ""
+echo "STEP 2: Finding generated a3m file..."
+echo "----------------------------------------"
+
+# Parse FASTA header to predict a3m filename
+HEADER=$(head -n1 "$INPUT_FASTA")
+echo "FASTA header: $HEADER"
+
+# Extract protein identifier from header like ">A|protein|" -> "A_protein_"
+PROTEIN_PREFIX=$(echo "$HEADER" | sed 's/^>//' | sed 's/|/_/g')
+A3M_FILE="${COLABFOLD_OUTPUT_DIR}/${PROTEIN_PREFIX}.a3m"
+
+echo "Expected a3m file: $A3M_FILE"
+
+# Check if a3m file exists
+if [ ! -f "$A3M_FILE" ]; then
+    echo "ERROR: Expected a3m file not found: $A3M_FILE"
+    echo "Available files in $COLABFOLD_OUTPUT_DIR:"
+    ls -la "$COLABFOLD_OUTPUT_DIR/"
+    
+    # Try to find any a3m file
+    A3M_FOUND=$(find "$COLABFOLD_OUTPUT_DIR" -name "*.a3m" | head -n1)
+    if [ -n "$A3M_FOUND" ]; then
+        echo "Found alternative a3m file: $A3M_FOUND"
+        A3M_FILE="$A3M_FOUND"
+    else
+        echo "No a3m files found in output directory!"
+        exit 1
+    fi
+fi
+
+echo "Using a3m file: $A3M_FILE"
+
+# ==========================================
+# STEP 3: Create prot.fasta for Boltz
+# ==========================================
+echo ""
+echo "STEP 3: Creating FASTA file for Boltz..."
+echo "----------------------------------------"
+
+# Get the absolute path for a3m file
+A3M_ABSOLUTE=$(realpath "$A3M_FILE")
+echo "Absolute path to a3m: $A3M_ABSOLUTE"
+
+# Create the FASTA file for Boltz with MSA path in header
+echo "Creating $TEMP_FASTA..."
+
+# Read original header and sequence
+ORIGINAL_HEADER=$(head -n1 "$INPUT_FASTA")
+SEQUENCE=$(tail -n+2 "$INPUT_FASTA")
+
+# Create new header with a3m path
+NEW_HEADER="${ORIGINAL_HEADER}${A3M_ABSOLUTE}"
+
+# Write the new FASTA file
+echo "$NEW_HEADER" > "$TEMP_FASTA"
+echo "$SEQUENCE" >> "$TEMP_FASTA"
+
+echo "Created Boltz FASTA file:"
+echo "Header: $NEW_HEADER"
+echo "Sequence length: $(echo "$SEQUENCE" | wc -c)"
+
+# ==========================================
+# STEP 4: Run Boltz Prediction
+# ==========================================
+echo ""
+echo "STEP 4: Running Boltz prediction..."
+echo "----------------------------------------"
+
+# Activate Boltz environment
+mamba activate /n/holylfs06/LABS/kempner_shared/Everyone/common_envs/miniconda3/envs/boltz
+
+# Create Boltz output directory
+mkdir -p "$BOLTZ_OUTPUT_DIR"
+
+
+echo "Command: boltz predict $TEMP_FASTA --cache $BOLTZ_CACHE --out_dir $BOLTZ_OUTPUT_DIR --devices $NUM_GPU_DEVICES --accelerator gpu"
+
+# Start Boltz timing
+boltz_start=$(date +%s)
+
+# Run Boltz prediction
+boltz predict "$TEMP_FASTA" --cache "$BOLTZ_CACHE" --out_dir "$BOLTZ_OUTPUT_DIR" --devices $NUM_GPU_DEVICES --accelerator gpu 
+
+# Check if Boltz succeeded
+if [ $? -ne 0 ]; then
+    echo "ERROR: Boltz prediction failed!"
+    exit 1
+fi
+
+# Calculate Boltz runtime
+boltz_end=$(date +%s)
+boltz_runtime=$((boltz_end - boltz_start))
+boltz_hours=$(echo "scale=2; $boltz_runtime/3600" | bc)
+
+echo "Boltz prediction completed successfully!"
+echo "Boltz runtime: $boltz_runtime seconds (${boltz_hours} hours)"
+
+# ==========================================
+# STEP 5: Pipeline Summary
+# ==========================================
+echo ""
+echo "==============================================="
+echo "PIPELINE COMPLETED SUCCESSFULLY!"
+echo "==============================================="
+
+# Calculate total runtime
+total_end=$(date +%s)
+total_runtime=$((total_end - start))
+total_hours=$(echo "scale=2; $total_runtime/3600" | bc)
+
+echo "SUMMARY:"
+echo "--------"
+echo "Input FASTA: $INPUT_FASTA"
+echo "Generated a3m: $A3M_FILE"
+echo "Boltz FASTA: $TEMP_FASTA"
+echo "Boltz output: $BOLTZ_OUTPUT_DIR"
+echo ""
+echo "TIMING:"
+echo "-------"
+echo "ColabFold search: $colab_runtime seconds (${colab_hours} hours)"
+echo "Boltz prediction: $boltz_runtime seconds (${boltz_hours} hours)"
+echo "Total pipeline: $total_runtime seconds (${total_hours} hours)"
+echo ""
+echo "OUTPUT FILES:"
+echo "-------------"
+if [ -d "$BOLTZ_OUTPUT_DIR" ]; then
+    echo "Boltz results:"
+    ls -la "$BOLTZ_OUTPUT_DIR/"
+fi
+
+echo ""
+echo "Pipeline completed at: $(date)"

@@ -79,3 +79,5 @@ chunks_*/
 **/msa/
 **/seq_*/
 **/*_protein_.a3m
+.jukit/*
+.jukit/
