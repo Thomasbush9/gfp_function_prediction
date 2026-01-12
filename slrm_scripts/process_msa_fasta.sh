@@ -69,7 +69,7 @@ while IFS= read -r -d '' INPUT_FASTA; do
     echo "      id: \"$PROTEIN_ID\""
     echo "      sequence: $SEQUENCE"
     echo "      msa: $A3M_ABSOLUTE"
-  } > "$OUTPUT_YAML"
+  } >"$OUTPUT_YAML"
 
   echo "Processed: $BASENAME -> $OUTPUT_YAML"
   echo "  ID: $PROTEIN_ID"
@@ -77,11 +77,9 @@ while IFS= read -r -d '' INPUT_FASTA; do
   ((PROCESSED_COUNT++)) || true
 
 done < <(find "$ORIGINAL_FASTA_DIR" -maxdepth 1 -type f \( -name "*.fasta" -o -name "*.fa" \) -print0)
-
+#TODO add here the script to add the multiple sequences if specificed
 echo "==============================================="
 echo "Processing complete"
 echo "  Processed: $PROCESSED_COUNT"
 echo "  Skipped: $SKIPPED_COUNT"
 echo "==============================================="
-
-
