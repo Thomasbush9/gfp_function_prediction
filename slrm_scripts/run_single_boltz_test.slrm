@@ -9,8 +9,8 @@
 #SBATCH --time=4:00:00
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=thomasbush52@gmail.com
-# Use array-aware log names to avoid clobbering:
-#SBATCH --output=/n/home06/tbush/job_logs/%x.%A_%a.out
+# Output log file (not an array job, so no %a needed):
+#SBATCH --output=/n/home06/tbush/job_logs/%x.%A.out
 
 set -euo pipefail
 INPUT_FILE=$1
