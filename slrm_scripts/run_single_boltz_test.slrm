@@ -38,8 +38,32 @@ runpy.run_module("boltz", run_name="__main__")
 PY
 
 # Estimate sequence length for memory optimization
-SEQ_LENGTH=$(grep -v "^>" "$INPUT_FILE" | tr -d '\n' | wc -c)
-echo "Sequence length: ${SEQ_LENGTH} residues"
+# Handle both YAML and FASTA input files
+if [[ "$INPUT_FILE" == *.yaml ]] || [[ "$INPUT_FILE" == *.yml ]]; then
+    # Extract all sequences from YAML and sum their lengths
+    SEQ_LENGTH=$(python3 <<PYTHON
+import yaml
+import sys
+try:
+    with open("$INPUT_FILE", 'r') as f:
+        data = yaml.safe_load(f)
+    total_length = 0
+    if 'sequences' in data:
+        for seq_entry in data['sequences']:
+            if 'protein' in seq_entry and 'sequence' in seq_entry['protein']:
+                total_length += len(seq_entry['protein']['sequence'])
+    print(total_length)
+except Exception as e:
+    print(0, file=sys.stderr)
+    sys.exit(1)
+PYTHON
+)
+else
+    # FASTA file - extract sequence length
+    SEQ_LENGTH=$(grep -v "^>" "$INPUT_FILE" | tr -d '\n' | wc -c)
+fi
+
+echo "Total sequence length: ${SEQ_LENGTH} residues"
 
 # Adjust parameters for large structures (>2000 residues)
 if [ "$SEQ_LENGTH" -gt 2000 ]; then
