@@ -4,21 +4,39 @@ Wrapper script to run Boltz with proper multiprocessing start method.
 Fixes CUDA multiprocessing error when using multiple GPUs.
 """
 import sys
-import multiprocessing
-import subprocess
 import os
 
-def main():
-    # Set multiprocessing start method to 'spawn' before any CUDA operations
-    # This must be done before importing torch or any CUDA-dependent modules
+# Set environment variable for PyTorch multiprocessing BEFORE any imports
+os.environ['PYTORCH_MULTIPROCESSING_START_METHOD'] = 'spawn'
+
+# Set multiprocessing start method before any torch imports
+import multiprocessing
+try:
+    multiprocessing.set_start_method('spawn', force=True)
+except RuntimeError:
+    # Already set, which is fine
+    pass
+
+# Now try to import and call boltz CLI directly
+cli_imported = False
+try:
+    # Try importing boltz's CLI module
+    from boltz.main import cli
+    cli_imported = True
+except ImportError:
     try:
-        multiprocessing.set_start_method('spawn', force=True)
-    except RuntimeError:
-        # Already set, which is fine
+        from boltz.src.boltz.main import cli
+        cli_imported = True
+    except ImportError:
         pass
-    
-    # Get all arguments except script name
-    args = sys.argv[1:]
+
+if cli_imported:
+    # Call the CLI directly with arguments
+    sys.argv = ['boltz'] + sys.argv[1:]
+    cli()
+else:
+    # Fallback to subprocess if direct import fails
+    import subprocess
     
     # Find boltz command in PATH
     boltz_path = None
@@ -37,15 +55,13 @@ def main():
                 boltz_path = potential_path
     
     if not boltz_path:
-        # Fallback to just 'boltz' and let the shell find it
         boltz_path = 'boltz'
     
-    # Build command
-    cmd = [boltz_path] + args
+    # Build command with environment variable set
+    cmd = [boltz_path] + sys.argv[1:]
     
-    # Run boltz with the same environment
-    sys.exit(subprocess.call(cmd))
-
-if __name__ == '__main__':
-    main()
+    # Run boltz with environment variable set
+    env = os.environ.copy()
+    env['PYTORCH_MULTIPROCESSING_START_METHOD'] = 'spawn'
+    sys.exit(subprocess.call(cmd, env=env))
 
