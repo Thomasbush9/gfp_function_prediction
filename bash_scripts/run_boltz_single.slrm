@@ -3,12 +3,14 @@
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=16
 #SBATCH --gpus-per-node=1
-#SBATCH --mem=16GB
-#SBATCH --partition=kempner_requeue
+#SBATCH --mem=64GB
+#SBATCH --partition=kempner_h100
 #SBATCH --account=kempner_bsabatini_lab
 #SBATCH --time=1:00:00
 #SBATCH --output=gpu_boltz_pipeline-%N.%x.%j.out
 #SBATCH --error=gpu_boltz_pipeline%N.%x.%j.err
+#SBATCH --mail-type=ALL
+#SBATCH --mail-user=thomasbush52@gmail.com
 
 # ==========================================
 # BOLTZ PIPELINE - Single SLURM Script
@@ -16,9 +18,9 @@
 
 # Define Variables
 INPUT_FASTA=$1
-COLABFOLD_OUTPUT_DIR="/n/home06/outputs/colab/"
+COLABFOLD_OUTPUT_DIR="/n/home06/tbush/outputs/outputs_wt"
 TEMP_FASTA="prot_pipeline.fasta"
-BOLTZ_OUTPUT_DIR="/n/home06/outputs/boltz/"
+BOLTZ_OUTPUT_DIR="/n/home06/tbush/outputs/outputs_wt"
 
 THREADS=$SLURM_CPUS_PER_TASK
 # Set GPU specifications for mmseq2 and boltz calculations

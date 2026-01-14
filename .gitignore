@@ -82,3 +82,5 @@ chunks_*/
 .jukit/*
 .jukit/
 *.json
+*.err
+*.out

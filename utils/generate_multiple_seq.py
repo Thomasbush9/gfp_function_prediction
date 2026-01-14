@@ -42,7 +42,7 @@ if __name__ == "__main__":
     data["sequences"] = data["sequences"] + multiple_seq
     print(data)
 
-    with open("/Users/thomasbush/Downloads/mul_seq.yaml", "w") as f:
+    with open("/n/home06/tbush/multi_seq_data", "w") as f:
         yaml.safe_dump(data, f)
 
 
