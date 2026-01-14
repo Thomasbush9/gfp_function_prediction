@@ -1,12 +1,12 @@
 #!/bin/bash
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --cpus-per-task=32
+#SBATCH --cpus-per-task=16
 #SBATCH --gpus-per-node=4
-#SBATCH --mem=128GB
+#SBATCH --mem=256GB
 #SBATCH --partition=kempner_requeue
 #SBATCH --account=kempner_bsabatini_lab
-#SBATCH --time=02:00:00
+#SBATCH --time=4:00:00
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=thomasbush52@gmail.com
 # Use array-aware log names to avoid clobbering:
@@ -21,6 +21,11 @@ BOLTZ_OUTPUT_DIR="${OUTPUT_DIR}/boltz_output/"
 export TRITON_CACHE_DIR="${SLURM_TMPDIR:-/tmp}/triton_cache_${USER}_single_job"
 mkdir -p "$TRITON_CACHE_DIR"
 mkdir -p "$BOLTZ_OUTPUT_DIR"
+
+# Get script directory for wrapper
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BOLTZ_WRAPPER="${SCRIPT_DIR}/run_boltz_with_spawn.py"
+
 module load python/3.12.8-fasrc01 gcc/14.2.0-fasrc01 cuda/12.9.1-fasrc01 cudnn/9.10.2.21_cuda12-fasrc01
 export PATH="/n/holylfs06/LABS/kempner_shared/Everyone/common_envs/miniconda3/envs/boltz/localcolabfold/colabfold-conda/bin:$PATH"
 mamba activate /n/holylfs06/LABS/kempner_shared/Everyone/common_envs/miniconda3/envs/boltz
@@ -32,10 +37,74 @@ import runpy
 runpy.run_module("boltz", run_name="__main__")
 PY
 
-# make predictions
-echo "Starting boltz predictions "
-if ! boltz predict "$INPUT_FILE" --cache "$BOLTZ_CACHE" --out_dir "$BOLTZ_OUTPUT_DIR" --devices 4 --accelerator gpu --recycling_steps 10 --diffusion_samples 25 --num_workers 0 --override; then
-  boltz predict "$INPUT_FILE" --cache "$BOLTZ_CACHE" --out_dir "$BOLTZ_OUTPUT_DIR" --devices 4 --accelerator gpu --recycling_steps 10 --diffusion_samples 25 --num_workers 0 --override --no_kernels
+# Estimate sequence length for memory optimization
+SEQ_LENGTH=$(grep -v "^>" "$INPUT_FILE" | tr -d '\n' | wc -c)
+echo "Sequence length: ${SEQ_LENGTH} residues"
+
+# Adjust parameters for large structures (>2000 residues)
+if [ "$SEQ_LENGTH" -gt 2000 ]; then
+    echo "Large structure detected, using optimized memory settings"
+    RECYCLING_STEPS=6
+    DIFFUSION_SAMPLES=15
+else
+    RECYCLING_STEPS=10
+    DIFFUSION_SAMPLES=25
 fi
 
-echo "Boltz predictions compled."
+# Function to run boltz with given device count
+run_boltz() {
+    local num_devices=$1
+    local use_kernels=$2
+    local extra_args=""
+    
+    if [ "$use_kernels" = "false" ]; then
+        extra_args="--no-kernels"
+    fi
+    
+    echo "Attempting prediction with ${num_devices} GPU(s), kernels=${use_kernels}"
+    python "$BOLTZ_WRAPPER" predict "$INPUT_FILE" \
+        --cache "$BOLTZ_CACHE" \
+        --out_dir "$BOLTZ_OUTPUT_DIR" \
+        --devices "$num_devices" \
+        --accelerator gpu \
+        --recycling_steps "$RECYCLING_STEPS" \
+        --diffusion_samples "$DIFFUSION_SAMPLES" \
+        --override \
+        -num_workers 0 \
+        $extra_args
+}
+
+# Try multi-GPU first (4 GPUs)
+echo "Starting boltz predictions with multi-GPU..."
+if run_boltz 4 true; then
+    echo "Boltz predictions completed successfully with 4 GPUs."
+    exit 0
+fi
+
+# Fallback 1: Try multi-GPU without kernels
+echo "Multi-GPU with kernels failed, trying without kernels..."
+if run_boltz 4 false; then
+    echo "Boltz predictions completed successfully with 4 GPUs (no kernels)."
+    exit 0
+fi
+
+# Fallback 2: Try single GPU with optimized settings
+echo "Multi-GPU failed, falling back to single GPU with optimized settings..."
+export CUDA_VISIBLE_DEVICES=0
+RECYCLING_STEPS=4
+DIFFUSION_SAMPLES=10
+
+if run_boltz 1 true; then
+    echo "Boltz predictions completed successfully with 1 GPU."
+    exit 0
+fi
+
+# Final fallback: Single GPU without kernels
+echo "Single GPU with kernels failed, trying without kernels..."
+if run_boltz 1 false; then
+    echo "Boltz predictions completed successfully with 1 GPU (no kernels)."
+    exit 0
+fi
+
+echo "ERROR: All boltz prediction attempts failed!"
+exit 1
