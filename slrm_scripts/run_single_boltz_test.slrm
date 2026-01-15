@@ -2,11 +2,11 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=16
-#SBATCH --gpus-per-node=4
+#SBATCH --gres=gpu:2
 #SBATCH --mem=256GB
-#SBATCH --partition=kempner_requeue
+#SBATCH --partition=kempner_h100
 #SBATCH --account=kempner_bsabatini_lab
-#SBATCH --time=4:00:00
+#SBATCH --time=2:00:00
 # Output log file (not an array job, so no %a needed):
 #SBATCH --output=/n/home06/tbush/job_logs/%x.%A.out
 
@@ -58,22 +58,9 @@ fi
 
 echo "Total sequence length: ${SEQ_LENGTH} residues"
 
-# Adjust parameters for large structures
-if [ "$SEQ_LENGTH" -gt 2000 ]; then
-    echo "Large structure detected, using optimized memory settings"
-    RECYCLING_STEPS=6
-    DIFFUSION_SAMPLES=15
-    NUM_WORKERS=8
-elif [ "$SEQ_LENGTH" -gt 1500 ]; then
-    echo "Very large structure detected (${SEQ_LENGTH} residues), using aggressive memory settings"
-    RECYCLING_STEPS=2
-    DIFFUSION_SAMPLES=5
-    NUM_WORKERS=0
-else
-    RECYCLING_STEPS=10
-    DIFFUSION_SAMPLES=25
-    NUM_WORKERS=4
-fi
+RECYCLING_STEPS=5
+DIFFUSION_SAMPLES=10
+NUM_WORKERS=4
 
 # Function to run boltz with given device count
 run_boltz() {
@@ -95,10 +82,6 @@ run_boltz() {
         --recycling_steps "$RECYCLING_STEPS" \
         --diffusion_samples "$DIFFUSION_SAMPLES" \
         --override \
-<<<<<<< HEAD
-        --num_workers 0 \
-        $extra_args
-=======
         --num_workers "$NUM_WORKERS" \
         $extra_args 2>&1 | tee "$output_file"; then
         # Check for OOM errors or failed examples
@@ -112,7 +95,6 @@ run_boltz() {
         rm -f "$output_file"
         return 1
     fi
->>>>>>> ad943dbb9362736e27b8936dfba7c957ba863713
 }
 
 # Function to run boltz on CPU (fallback for GPU OOM)
