@@ -21,7 +21,6 @@ mkdir -p "$TRITON_CACHE_DIR"
 mkdir -p "$BOLTZ_OUTPUT_DIR"
 
 # Get script directory for wrapper
-
 BOLTZ_WRAPPER="/n/home06/tbush/gfp_function_prediction/slrm_scripts/run_boltz_with_spawn.py"
 
 module load python/3.12.8-fasrc01 gcc/14.2.0-fasrc01 cuda/12.9.1-fasrc01 cudnn/9.10.2.21_cuda12-fasrc01
@@ -59,14 +58,21 @@ fi
 
 echo "Total sequence length: ${SEQ_LENGTH} residues"
 
-# Adjust parameters for large structures (>2000 residues)
+# Adjust parameters for large structures
 if [ "$SEQ_LENGTH" -gt 2000 ]; then
     echo "Large structure detected, using optimized memory settings"
     RECYCLING_STEPS=6
     DIFFUSION_SAMPLES=15
+    NUM_WORKERS=8
+elif [ "$SEQ_LENGTH" -gt 1500 ]; then
+    echo "Very large structure detected (${SEQ_LENGTH} residues), using aggressive memory settings"
+    RECYCLING_STEPS=2
+    DIFFUSION_SAMPLES=5
+    NUM_WORKERS=0
 else
     RECYCLING_STEPS=10
     DIFFUSION_SAMPLES=25
+    NUM_WORKERS=4
 fi
 
 # Function to run boltz with given device count
@@ -74,13 +80,14 @@ run_boltz() {
     local num_devices=$1
     local use_kernels=$2
     local extra_args=""
+    local output_file=$(mktemp)
     
     if [ "$use_kernels" = "false" ]; then
-        extra_args="--no-kernels"
+        extra_args="--no_kernels"
     fi
     
     echo "Attempting prediction with ${num_devices} GPU(s), kernels=${use_kernels}"
-    python "$BOLTZ_WRAPPER" predict "$INPUT_FILE" \
+    if python "$BOLTZ_WRAPPER" predict "$INPUT_FILE" \
         --cache "$BOLTZ_CACHE" \
         --out_dir "$BOLTZ_OUTPUT_DIR" \
         --devices "$num_devices" \
@@ -88,41 +95,133 @@ run_boltz() {
         --recycling_steps "$RECYCLING_STEPS" \
         --diffusion_samples "$DIFFUSION_SAMPLES" \
         --override \
+<<<<<<< HEAD
         --num_workers 0 \
         $extra_args
+=======
+        --num_workers "$NUM_WORKERS" \
+        $extra_args 2>&1 | tee "$output_file"; then
+        # Check for OOM errors or failed examples
+        if grep -q "ran out of memory\|Number of failed examples" "$output_file"; then
+            rm -f "$output_file"
+            return 1
+        fi
+        rm -f "$output_file"
+        return 0
+    else
+        rm -f "$output_file"
+        return 1
+    fi
+>>>>>>> ad943dbb9362736e27b8936dfba7c957ba863713
 }
 
-# Try multi-GPU first (4 GPUs)
-echo "Starting boltz predictions with multi-GPU..."
-if run_boltz 4 true; then
-    echo "Boltz predictions completed successfully with 4 GPUs."
-    exit 0
+# Function to run boltz on CPU (fallback for GPU OOM)
+run_boltz_cpu() {
+    local use_kernels=$1
+    local extra_args=""
+    local output_file=$(mktemp)
+    
+    if [ "$use_kernels" = "false" ]; then
+        extra_args="--no_kernels"
+    fi
+    
+    echo "Attempting prediction with CPU accelerator, kernels=${use_kernels}"
+    if python "$BOLTZ_WRAPPER" predict "$INPUT_FILE" \
+        --cache "$BOLTZ_CACHE" \
+        --out_dir "$BOLTZ_OUTPUT_DIR" \
+        --accelerator cpu \
+        --recycling_steps "$RECYCLING_STEPS" \
+        --diffusion_samples "$DIFFUSION_SAMPLES" \
+        --override \
+        --num_workers "$NUM_WORKERS" \
+        $extra_args 2>&1 | tee "$output_file"; then
+        # Check for OOM errors or failed examples
+        if grep -q "ran out of memory\|Number of failed examples" "$output_file"; then
+            rm -f "$output_file"
+            return 1
+        fi
+        rm -f "$output_file"
+        return 0
+    else
+        rm -f "$output_file"
+        return 1
+    fi
+}
+
+# For very large structures (>1500 residues), try multi-GPU first to avoid OOM
+# For smaller structures, prioritize single GPU (more reliable, avoids multiprocessing issues)
+if [ "$SEQ_LENGTH" -gt 1500 ]; then
+    echo "Very large structure detected (${SEQ_LENGTH} residues), attempting multi-GPU first to avoid OOM..."
+    unset CUDA_VISIBLE_DEVICES
+    
+    # Try multi-GPU without kernels first (more memory efficient)
+    if run_boltz 4 false; then
+        echo "Boltz predictions completed successfully with 4 GPUs (no kernels)."
+        exit 0
+    fi
+    
+    # Fallback: Multi-GPU with kernels
+    echo "Multi-GPU without kernels failed, trying with kernels..."
+    if run_boltz 4 true; then
+        echo "Boltz predictions completed successfully with 4 GPUs."
+        exit 0
+    fi
+    
+    # Fallback: Single GPU with aggressive memory settings
+    echo "Multi-GPU failed, falling back to single GPU with aggressive memory settings..."
+    export CUDA_VISIBLE_DEVICES=0
+    if run_boltz 1 false; then
+        echo "Boltz predictions completed successfully with 1 GPU (no kernels)."
+        exit 0
+    fi
+    
+    # Final fallback: CPU accelerator (slower but no GPU memory constraints)
+    echo "All GPU attempts failed, falling back to CPU accelerator..."
+    unset CUDA_VISIBLE_DEVICES
+    if run_boltz_cpu false; then
+        echo "Boltz predictions completed successfully with CPU (no kernels)."
+        exit 0
+    fi
+else
+    # For smaller structures, prioritize single GPU
+    echo "Starting boltz predictions with single GPU (optimized for reliability)..."
+    export CUDA_VISIBLE_DEVICES=0
+    
+    if run_boltz 1 true; then
+        echo "Boltz predictions completed successfully with 1 GPU."
+        exit 0
+    fi
+    
+    # Fallback 1: Single GPU without kernels
+    echo "Single GPU with kernels failed, trying without kernels..."
+    if run_boltz 1 false; then
+        echo "Boltz predictions completed successfully with 1 GPU (no kernels)."
+        exit 0
+    fi
+    
+    # Fallback 2: Try multi-GPU with ddp_spawn strategy (if single GPU fails)
+    echo "Single GPU failed, attempting multi-GPU with ddp_spawn strategy..."
+    unset CUDA_VISIBLE_DEVICES
+    if run_boltz 4 true; then
+        echo "Boltz predictions completed successfully with 4 GPUs."
+        exit 0
+    fi
+    
+    # Fallback: Multi-GPU without kernels
+    echo "Multi-GPU with kernels failed, trying without kernels..."
+    if run_boltz 4 false; then
+        echo "Boltz predictions completed successfully with 4 GPUs (no kernels)."
+        exit 0
+    fi
+    
+    # Final fallback: CPU accelerator (slower but no GPU memory constraints)
+    echo "All GPU attempts failed, falling back to CPU accelerator..."
+    unset CUDA_VISIBLE_DEVICES
+    if run_boltz_cpu false; then
+        echo "Boltz predictions completed successfully with CPU (no kernels)."
+        exit 0
+    fi
 fi
 
-# Fallback 1: Try multi-GPU without kernels
-echo "Multi-GPU with kernels failed, trying without kernels..."
-if run_boltz 4 false; then
-    echo "Boltz predictions completed successfully with 4 GPUs (no kernels)."
-    exit 0
-fi
-
-# Fallback 2: Try single GPU with optimized settings
-echo "Multi-GPU failed, falling back to single GPU with optimized settings..."
-export CUDA_VISIBLE_DEVICES=0
-RECYCLING_STEPS=4
-DIFFUSION_SAMPLES=10
-
-if run_boltz 1 true; then
-    echo "Boltz predictions completed successfully with 1 GPU."
-    exit 0
-fi
-
-# Final fallback: Single GPU without kernels
-echo "Single GPU with kernels failed, trying without kernels..."
-if run_boltz 1 false; then
-    echo "Boltz predictions completed successfully with 1 GPU (no kernels)."
-    exit 0
-fi
-
-echo "ERROR: All boltz prediction attempts failed!"
+echo "ERROR: All boltz prediction attempts failed (including CPU fallback)!"
 exit 1
