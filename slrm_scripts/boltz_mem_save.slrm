@@ -13,6 +13,7 @@
 INPUT_FILE=$1
 OUTPUR_DIR=$2
 
+START='date +%s'
 echo "Starting Prediction Process on ${INPUT_FILE}"
 echo "Predictions will be saved in ${OUTPUR_DIR}"
 : "${BOLTZ_RECYCLING_STEPS:=8}"
@@ -39,5 +40,6 @@ export NUM_GPU_DEVICES=1
 
 echo "Starting predictions"
 boltz predict "$INPUT_FILE" --cache "$BOLTZ_CACHE" --out_dir "$BOLTZ_OUTPUT_DIR" --devices "$NUM_GPU_DEVICES" --accelerator gpu --recycling_steps "$BOLTZ_RECYCLING_STEPS" --diffusion_samples "$BOLTZ_DIFFUSION_SAMPLES" --override
-
-echo "Predictions completed tot time: "
+END='date +%s'
+RUNTIME=$((END - START))
+echo "Predictions completed tot time: ${RUNTIME}"
