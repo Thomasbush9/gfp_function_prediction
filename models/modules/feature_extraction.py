@@ -199,7 +199,7 @@ if __name__ == "__main__":
     print(f"Found {len(paths)} sequence directories")
 
     # Load effective strain if provided
-    es_dir = dir_path / "es"
+    es_dir = dir_path / "es" / "combined.joblib"
     if es_dir:
         strain = load_strain(es_dir)
         print(f"Loaded effective strain data from {es_dir}")
