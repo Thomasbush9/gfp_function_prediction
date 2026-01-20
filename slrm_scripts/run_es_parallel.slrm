@@ -27,12 +27,12 @@ ROOT_DIR="${1:-}"
 SCRIPT_DIR="${2:-}"
 WT_PATH="${3:-}"
 
-ROOT_DIR="$(realpath "$ROOT_DIR")"
+#ROOT_DIR="$(realpath "$ROOT_DIR")"
 OUTPUT_DIR="$ROOT_DIR/es/"
 mkdir -p "$OUTPUT_DIR"
 echo "Created new output directory: $OUTPUT_DIR"
-SCRIPT_DIR="$(realpath "$SCRIPT_DIR")"
-WT_PATH="$(realpath "$WT_PATH")"
+#SCRIPT_DIR="$(realpath "$SCRIPT_DIR")"
+#WT_PATH="$(realpath "$WT_PATH")"
 
 find $ROOT_DIR -name "*.cif" -type f -print |
   awk -F'[-_/|.]' '

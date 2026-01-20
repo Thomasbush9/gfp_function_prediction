@@ -1,5 +1,5 @@
 input:
-  fasta_dir: /n/home06/tbush/gabrb3
+  fasta_dir: /n/home06/tbush/gfp_function_prediction/data/original
   # fasta_dir: /n/home06/tbush/gfp_function_prediction/data/20250815_102358_subsample/subsample
 
 # Output parent directory where all results will be stored
