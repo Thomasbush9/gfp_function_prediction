@@ -41,7 +41,7 @@ def load_target_values(tsv_path: Path) -> dict:
 
     return target_mapping
 
-
+#TODO: add support for new format
 def extract_data_from_dir(dir: Path, target_mapping: dict = None):
     """
     Extract data from a single directory of predictions.
@@ -59,21 +59,13 @@ def extract_data_from_dir(dir: Path, target_mapping: dict = None):
     boltz_dir = dir / "boltz"
     cif_file_path = None
     conf_file_path = None
-
     # Search for CIF and confidence files
-    for subdir in boltz_dir.rglob("*"):
-        if subdir.is_dir() and "boltz_results" in subdir.name:
-            predictions_dir = subdir / "predictions"
-            if predictions_dir.exists():
-                for pred_dir in predictions_dir.iterdir():
-                    if pred_dir.is_dir():
-                        # Look for CIF and confidence files
-                        for file in pred_dir.glob("*.cif"):
-                            cif_file_path = file
-                        for file in pred_dir.glob("plddt_*.npz"):
-                            conf_file_path = file
-                        break
-                break
+    if boltz_dir.exists():
+        # Look for CIF and confidence files
+        for file in boltz_dir.glob("*.cif"):
+            cif_file_path = file
+        for file in boltz_dir.glob("plddt_*.npz"):
+            conf_file_path = file
 
     if cif_file_path is None or conf_file_path is None:
         raise FileNotFoundError(f"Could not find CIF or confidence files in {dir}")
