@@ -176,13 +176,6 @@ if __name__ == "__main__":
         "--out", type=str, required=True, help="Output directory for processed data"
     )
     parser.add_argument(
-        "--es_dir",
-        type=str,
-        required=False,
-        default=None,
-        help="Optional: Directory for effective strain data",
-    )
-    parser.add_argument(
         "--shard_size", type=int, default=4096, help="Size of each shard file"
     )
     parser.add_argument(
@@ -200,12 +193,13 @@ if __name__ == "__main__":
     print(f"Loaded {len(target_mapping)} target values")
 
     # Get all sequence directories
+    
     dir_path = Path(args.dir)
     paths = [i for i in dir_path.iterdir() if i.is_dir()]
     print(f"Found {len(paths)} sequence directories")
 
     # Load effective strain if provided
-    es_dir = Path(args.es_dir) if args.es_dir else None
+    es_dir = dir_path / "es"
     if es_dir:
         strain = load_strain(es_dir)
         print(f"Loaded effective strain data from {es_dir}")
