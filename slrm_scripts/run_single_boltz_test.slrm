@@ -10,7 +10,7 @@
 # Output log file (not an array job, so no %a needed):
 #SBATCH --output=/n/home06/tbush/job_logs/%x.%A.out
 
-set -euo pipefail
+set -eo pipefail
 INPUT_FILE=$1
 OUTPUT_DIR=$2
 
@@ -58,8 +58,8 @@ fi
 
 echo "Total sequence length: ${SEQ_LENGTH} residues"
 
-RECYCLING_STEPS=5
-DIFFUSION_SAMPLES=10
+RECYCLING_STEPS=10
+DIFFUSION_SAMPLES=25
 NUM_WORKERS=4
 
 # Function to run boltz with given device count
