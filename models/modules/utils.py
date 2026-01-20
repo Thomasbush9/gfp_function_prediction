@@ -4,6 +4,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import torch
+import joblib
 
 
 def rotate_points(P, Q):
@@ -52,10 +53,10 @@ def list2onehot(idxs: List, dim: int) -> torch.Tensor:
     return mat
 
 
-def load_strain(es_dir: Path):
+def load_strain(combined_es_path: Path):
     """
     Args:
-    - es_dir: effective strain directory of .csv files
+    - combined_es_path:  effective strain directory of .joblib file 
 
     Returns:
     - strain: torch.Tensor (n_files, n_residues)
@@ -64,11 +65,10 @@ def load_strain(es_dir: Path):
     tensors = []
     filenames = []
 
-    for file in sorted(es_dir.iterdir()):
-        if file.suffix == ".csv":
-            df = pd.read_csv(file)
-            tensors.append(torch.tensor(df["strain"].values))
-            filenames.append(file.stem)  # or file.name if you want the .csv extension
+    data = joblib.load(combined_es_path)
+    for seq_idx, df in data.items():
+        filenames.append(seq_idx)
+        tensors.append(torch.tensor(df["strain"].values))
 
     strain = torch.stack(tensors, dim=0)
     return strain, filenames
