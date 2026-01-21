@@ -80,17 +80,22 @@ def extract_data_from_dir(dir: Path, target_mapping: dict = None):
     # Get target value if available
     target_value = None
     if target_mapping is not None:
-        # Extract sequence index from the CIF file path
-        # The sequence index is in the path like: .../seq_27173.fasta/...
-        for part in cif_file_path.parts:
-            if "seq_" in part and ".fasta" in part:
-                # Extract the sequence number from seq_XXXXX.fasta
-                seq_part = part.split("_")[1].split(".")[0]  # Get the number part
-                seq_idx = f"seq_{seq_part.zfill(5)}"
-                target_value = target_mapping.get(seq_idx)
-                print(f"Found sequence {seq_idx} in {part}, target: {target_value}")
-                break
+        # dir is like .../seq_35209
+        seq_idx = dir.name  # already "seq_35209"
+        target_value = target_mapping.get(seq_idx)
 
+    # if target_mapping is not None:
+    #     # Extract sequence index from the CIF file path
+    #     # The sequence index is in the path like: .../seq_27173.fasta/...
+    #     for part in cif_file_path.parts:
+    #         if "seq_" in part and ".fasta" in part:
+    #             # Extract the sequence number from seq_XXXXX.fasta
+    #             seq_part = part.split("_")[1].split(".")[0]  # Get the number part
+    #             seq_idx = f"seq_{seq_part.zfill(5)}"
+    #             target_value = target_mapping.get(seq_idx)
+    #             print(f"Found sequence {seq_idx} in {part}, target: {target_value}")
+    #             break
+    #
     return cif_file, conf_tensor, target_value
 
 
@@ -157,6 +162,67 @@ def write_shards(pyg_iter, out_dir, shard_size=4096):
         shard_id += 1
 
     return total, shard_id
+def write_tensor_shards(sample_iter, out_dir, shard_size=4096):
+    out = Path(out_dir).expanduser()
+    out.mkdir(parents=True, exist_ok=True)
+
+    shard_id, total = 0, 0
+
+    # shard buffers (lists that will be stacked)
+    pos_buf = []
+    xstruct_buf = []
+    xesm_buf = []
+    y_buf = []
+
+    edge_cat = []
+    edge_ptr = [0]  # cumulative edge count
+
+    def flush():
+        nonlocal shard_id, pos_buf, xstruct_buf, xesm_buf, y_buf, edge_cat, edge_ptr
+
+        if not pos_buf:
+            return
+
+        shard = {
+            "pos": torch.stack(pos_buf, dim=0),         # (S,238,3)
+            "x_struct": torch.stack(xstruct_buf, dim=0),# (S,238,F)
+            "x_esm": torch.stack(xesm_buf, dim=0),      # (S,238,960)
+            "y": torch.stack(y_buf, dim=0),             # (S,)
+            "edge_index": torch.cat(edge_cat, dim=1),   # (2,sumE)
+            "edge_ptr": torch.tensor(edge_ptr, dtype=torch.long),  # (S+1,)
+        }
+
+        shard_path = out / f"shard_{shard_id:05d}.pt"
+        torch.save(shard, shard_path)
+        torch.save(len(pos_buf), shard_path.with_suffix(".meta.pt"))
+
+        shard_id += 1
+
+        # reset buffers
+        pos_buf.clear()
+        xstruct_buf.clear()
+        xesm_buf.clear()
+        y_buf.clear()
+        edge_cat.clear()
+        edge_ptr = [0]
+
+    for sample in sample_iter:
+        # sample is a dict-like payload we yield (see generator below)
+        pos_buf.append(sample["pos"])
+        xstruct_buf.append(sample["x_struct"])
+        xesm_buf.append(sample["x_esm"])
+        y_buf.append(sample["y"])
+
+        ei = sample["edge_index"]
+        edge_cat.append(ei)
+        edge_ptr.append(edge_ptr[-1] + ei.size(1))
+
+        total += 1
+        if len(pos_buf) >= shard_size:
+            flush()
+
+    flush()
+    return total, shard_id
 
 
 if __name__ == "__main__":
@@ -195,7 +261,8 @@ if __name__ == "__main__":
     # Get all sequence directories
     
     dir_path = Path(args.dir)
-    paths = [i for i in dir_path.iterdir() if i.is_dir()]
+    paths = [p for p in dir_path.iterdir() if p.is_dir() and p.name.startswith("seq_")]
+
     print(f"Found {len(paths)} sequence directories")
 
     # Load effective strain if provided
@@ -223,41 +290,52 @@ if __name__ == "__main__":
             try:
                 # Extract data from directory
                 cif, confs, target_value = extract_data_from_dir(i, target_mapping)
+# Create adjacency matrix (you said you want to keep this step)
+                adj_mat = list2onehot(cif.neigh_idx, 238)  # (238,238) float32
 
-                # Create adjacency matrix
-                adj_mat = list2onehot(cif.neigh_idx, 238)  # -> dense (238,238)
+# Convert to edge_index for storage
+                ii, jj = torch.nonzero(adj_mat, as_tuple=True)
+                edge_index = torch.stack([ii, jj], dim=0).to(torch.long).contiguous()  # (2,E)
 
-                # Create coordinates and features
+# Coordinates
                 coords = torch.tensor(cif.coord, dtype=torch.float32)  # (238,3)
-                feat = torch.cat((coords, confs.unsqueeze(-1)), dim=1)  # (238,4)
 
-                # Add effective strain if available
+# Structural features: coords + confidence (+ strain)
+                confs = confs.to(torch.float32).view(-1, 1)            # (238,1)
+                x_struct = torch.cat([coords, confs], dim=1)           # (238,4)
+
                 if strain_all is not None and seq_name in strain_index:
                     s = strain_all[strain_index[seq_name]]
-                    s.to(dtype=torch.float32)
-                    s = torch.nan_to_num(s, nan=0)
-                    #Make it per residue (res_number, 1)
-                    s.view(-1, 1)
-                    if s.shape[0] != feat.shape[0]:
-                        raise ValueError(f"Strain lenght {s.shape[0]} not correct")
+                    s = s.to(torch.float32)
+                    s = torch.nan_to_num(s, nan=0.0).view(-1, 1)
+                    if s.shape[0] != x_struct.shape[0]:
+                        raise ValueError(f"Strain length {s.shape[0]} not correct")
+                    x_struct = torch.cat([x_struct, s], dim=1)         # (238,5)
 
-                    feat = torch.cat((feat, s), dim=1)
-                else:
-                    pass
-
-                esm_embeddings = None
+# ESM
                 esm_embeddings = load_esm_data(i)
+                if esm_embeddings is None:
+                    raise ValueError("Missing ESM embeddings")  # or handle with zeros
 
-                if esm_embeddings is not None: 
-                # esm_embeddings: (1, 240, 960)
-                    esm = esm_embeddings.squeeze(0)          # (240, 960)
-                    esm = esm[1:-1]                          # remove start/end -> (238, 960)
-                    feat = torch.cat([feat, esm.to(feat.dtype)], dim=1)  # (238, 964/965)
+                esm = esm_embeddings.squeeze(0)   # (240,960)
+                esm = esm[1:-1]                   # (238,960)
+                if esm.shape[0] != x_struct.shape[0]:
+                    raise ValueError(f"ESM length {esm.shape[0]} != residues {x_struct.shape[0]}")
 
-                data = to_pyg_data(adj_mat, coords, feat, target_value)
+# Cast to fp16 for storage
+                pos = coords.to(torch.float16)
+                x_struct = x_struct.to(torch.float16)
+                x_esm = esm.to(torch.float16)
 
-                successful += 1
-                yield data
+                y = torch.tensor(target_value, dtype=torch.float32)  # keep y float32
+
+                yield {
+                    "pos": pos,
+                    "x_struct": x_struct,
+                    "x_esm": x_esm,
+                    "edge_index": edge_index,
+                    "y": y,
+                }
 
             except Exception as e:
                 print(f"Failed to process {i.name}: {e}")
