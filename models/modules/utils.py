@@ -51,7 +51,29 @@ def list2onehot(idxs: List, dim: int) -> torch.Tensor:
     col_idx = torch.tensor([i for r in idxs for i in r])
     mat[row_idx, col_idx] = 1
     return mat
+def neigh_list_to_edge_index(idxs: List, dim: int = None, undirected: bool = False):
+    """
+    Convert neighbor-list adjacency into edge_index (COO).
+    idxs[i] = list of neighbors of node i.
 
+    Returns:
+      edge_index: LongTensor shape (2, E)
+    """
+    lengths = torch.tensor([len(r) for r in idxs], dtype=torch.long)
+    row = torch.arange(len(idxs), dtype=torch.long).repeat_interleave(lengths)
+    col = torch.tensor([j for r in idxs for j in r], dtype=torch.long)
+
+    edge_index = torch.stack([row, col], dim=0)  # (2, E)
+
+    if undirected:
+        rev = edge_index.flip(0)                 # (2, E) swapped rows/cols
+        edge_index = torch.cat([edge_index, rev], dim=1)
+
+    # Optional: remove duplicates / self-loops if needed
+    # edge_index = torch.unique(edge_index, dim=1)
+    # edge_index, _ = torch_geometric.utils.remove_self_loops(edge_index)
+
+    return edge_index
 
 def load_strain(combined_es_path: Path):
     """
@@ -72,3 +94,16 @@ def load_strain(combined_es_path: Path):
 
     strain = torch.stack(tensors, dim=0)
     return strain, filenames
+
+def load_esm_data(dir_path: Path) -> torch.Tensor:
+    """Load ESM embeddings saved as embeddings.npy"""
+    embedding_path = dir_path / "embeddings.npy"
+
+    if embedding_path.exists():
+        arr = np.load(embedding_path)  # numpy array
+        embeddings = torch.from_numpy(arr).float()
+        return embeddings
+    else:
+        print(f"ESM embeddings not found in {dir_path}")
+        pass
+

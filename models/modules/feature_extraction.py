@@ -10,11 +10,11 @@ from tqdm import tqdm
 
 try:
     from .protein import Protein
-    from .utils import list2onehot, load_strain
+    from .utils import list2onehot, load_strain, load_esm_data, neigh_list_to_edge_index
 except ImportError:
     from protein import Protein
 
-    from utils import list2onehot, load_strain
+    from utils import list2onehot, load_strain, load_esm_data
 
 
 def load_target_values(tsv_path: Path) -> dict:
@@ -244,6 +244,15 @@ if __name__ == "__main__":
                     feat = torch.cat((feat, s), dim=1)
                 else:
                     pass
+
+                esm_embeddings = None
+                esm_embeddings = load_esm_data(i)
+
+                if esm_embeddings is not None: 
+                # esm_embeddings: (1, 240, 960)
+                    esm = esm_embeddings.squeeze(0)          # (240, 960)
+                    esm = esm[1:-1]                          # remove start/end -> (238, 960)
+                    feat = torch.cat([feat, esm.to(feat.dtype)], dim=1)  # (238, 964/965)
 
                 data = to_pyg_data(adj_mat, coords, feat, target_value)
 
