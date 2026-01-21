@@ -68,7 +68,7 @@ def load_strain(combined_es_path: Path):
     data = joblib.load(combined_es_path)
     for seq_idx, df in data.items():
         filenames.append(seq_idx)
-        tensors.append(torch.tensor(df["strain"].values))
+        tensors.append(torch.Tensor(df["strain"].values))
 
     strain = torch.stack(tensors, dim=0)
     return strain, filenames
