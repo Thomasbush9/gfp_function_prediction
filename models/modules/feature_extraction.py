@@ -200,9 +200,14 @@ if __name__ == "__main__":
 
     # Load effective strain if provided
     es_dir = dir_path / "es" / "combined.joblib"
+    strain_all, strain_ids = (None, None)
     if es_dir:
-        strain = load_strain(es_dir)
-        print(f"Loaded effective strain data from {es_dir}")
+        strain_all, strain_ids = load_strain(es_dir)
+        strain_index = {name: idx for idx, name in enumerate(strain_ids)}
+        print(f"Loaded effective strain for {strain_all.shape[0]} sequences")
+    else:
+        strain_index = {} 
+    print(f"Loaded effective strain data from {es_dir}")
 
     pbar = tqdm(paths, desc="Processing sequences")
 
@@ -212,6 +217,7 @@ if __name__ == "__main__":
 
         for i in pbar:
             pbar.set_description_str(f"Processing: {i.name}")
+            seq_name = i.name
             pbar.refresh()
 
             try:
@@ -226,13 +232,19 @@ if __name__ == "__main__":
                 feat = torch.cat((coords, confs.unsqueeze(-1)), dim=1)  # (238,4)
 
                 # Add effective strain if available
-                if es_dir and strain is not None:
-                    # Assuming strain data is aligned with sequences
-                    # You may need to adjust this based on your data structure
-                    strain_feat = torch.tensor(strain, dtype=torch.float32)
-                    feat = torch.cat((feat, strain_feat), dim=1)
+                if strain_all is not None and seq_name in strain_index:
+                    s = strain_all[strain_index[seq_name]]
+                    s.to(dtype=torch.float32)
+                    s = torch.nan_to_num(s, nan=0)
+                    #Make it per residue (res_number, 1)
+                    s.view(-1, 1)
+                    if s.shape[0] != feat.shape[0]:
+                        raise ValueError(f"Strain lenght {s.shape[0]} not correct")
 
-                # Create PyG Data object with target value
+                    feat = torch.cat((feat, s), dim=1)
+                else:
+                    pass
+
                 data = to_pyg_data(adj_mat, coords, feat, target_value)
 
                 successful += 1
