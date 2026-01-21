@@ -308,9 +308,11 @@ if __name__ == "__main__":
                     s = strain_all[strain_index[seq_name]]
                     s = s.to(torch.float32)
                     s = torch.nan_to_num(s, nan=0.0).view(-1, 1)
-                    if s.shape[0] != x_struct.shape[0]:
-                        raise ValueError(f"Strain length {s.shape[0]} not correct")
-                    x_struct = torch.cat([x_struct, s], dim=1)         # (238,5)
+                else:
+                    s = torch.zeros((x_struct.shape[0], 1), dtype=torch.float32)
+                if s.shape[0] != x_struct.shape[0]:
+                    raise ValueError(f"Strain length {s.shape[0]} not correct")
+                x_struct = torch.cat([x_struct, s], dim=1)         # (238,5)
 
 # ESM
                 esm_embeddings = load_esm_data(i)
